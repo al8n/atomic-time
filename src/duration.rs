@@ -1,10 +1,10 @@
-use core::{sync::atomic::Ordering, time::Duration as StdDuration};
+use core::{sync::atomic::Ordering, time::Duration};
 
 use atomic::Atomic;
 
-/// Atomic version of [`Duration`](StdDuration)
+/// Atomic version of [`Duration`]
 #[repr(transparent)]
-pub struct AtomicDuration(Atomic<Duration>);
+pub struct AtomicDuration(Atomic<PodDuration>);
 
 impl core::fmt::Debug for AtomicDuration {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -16,17 +16,17 @@ impl core::fmt::Debug for AtomicDuration {
 
 impl AtomicDuration {
   /// Creates a new `AtomicDuration` with the given value.
-  pub const fn new(duration: StdDuration) -> Self {
-    Self(Atomic::new(Duration::from_std(duration)))
+  pub const fn new(duration: Duration) -> Self {
+    Self(Atomic::new(PodDuration::from_std(duration)))
   }
 
-  /// Loads [`Duration`](StdDuration) from `AtomicDuration`.
+  /// Loads [`Duration`](Duration) from `AtomicDuration`.
   ///
   /// load takes an [`Ordering`] argument which describes the memory ordering of this operation.
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
-  pub fn load(&self, ordering: Ordering) -> StdDuration {
+  pub fn load(&self, ordering: Ordering) -> Duration {
     self.0.load(ordering).to_std()
   }
 
@@ -38,16 +38,16 @@ impl AtomicDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
-  pub fn store(&self, val: StdDuration, ordering: Ordering) {
-    self.0.store(Duration::from_std(val), ordering)
+  pub fn store(&self, val: Duration, ordering: Ordering) {
+    self.0.store(PodDuration::from_std(val), ordering)
   }
 
   /// Stores a value into the `AtomicDuration`, returning the old value.
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
-  pub fn swap(&self, val: StdDuration, ordering: Ordering) -> StdDuration {
-    self.0.swap(Duration::from_std(val), ordering).to_std()
+  pub fn swap(&self, val: Duration, ordering: Ordering) -> Duration {
+    self.0.swap(PodDuration::from_std(val), ordering).to_std()
   }
 
   /// Stores a value into the `AtomicDuration` if the current value is the same as the
@@ -68,16 +68,16 @@ impl AtomicDuration {
   /// [`compare_exchange`]: #method.compare_exchange
   pub fn compare_exchange_weak(
     &self,
-    current: StdDuration,
-    new: StdDuration,
+    current: Duration,
+    new: Duration,
     success: Ordering,
     failure: Ordering,
-  ) -> Result<StdDuration, StdDuration> {
+  ) -> Result<Duration, Duration> {
     self
       .0
       .compare_exchange_weak(
-        Duration::from_std(current),
-        Duration::from_std(new),
+        PodDuration::from_std(current),
+        PodDuration::from_std(new),
         success,
         failure,
       )
@@ -101,16 +101,16 @@ impl AtomicDuration {
   /// [`compare_exchange`]: #method.compare_exchange
   pub fn compare_exchange(
     &self,
-    current: StdDuration,
-    new: StdDuration,
+    current: Duration,
+    new: Duration,
     success: Ordering,
     failure: Ordering,
-  ) -> Result<StdDuration, StdDuration> {
+  ) -> Result<Duration, Duration> {
     self
       .0
       .compare_exchange(
-        Duration::from_std(current),
-        Duration::from_std(new),
+        PodDuration::from_std(current),
+        PodDuration::from_std(new),
         success,
         failure,
       )
@@ -155,14 +155,14 @@ impl AtomicDuration {
     set_order: Ordering,
     fetch_order: Ordering,
     mut f: F,
-  ) -> Result<StdDuration, StdDuration>
+  ) -> Result<Duration, Duration>
   where
-    F: FnMut(StdDuration) -> Option<StdDuration>,
+    F: FnMut(Duration) -> Option<Duration>,
   {
     self
       .0
       .fetch_update(set_order, fetch_order, |d| {
-        f(d.to_std()).map(Duration::from_std)
+        f(d.to_std()).map(PodDuration::from_std)
       })
       .map(|d| d.to_std())
       .map_err(|d| d.to_std())
@@ -173,7 +173,7 @@ impl AtomicDuration {
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
   #[inline]
-  pub fn into_inner(self) -> StdDuration {
+  pub fn into_inner(self) -> Duration {
     self.0.into_inner().to_std()
   }
 }
@@ -190,7 +190,7 @@ const _: () = {
 
   impl<'de> Deserialize<'de> for AtomicDuration {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-      Ok(Self::new(StdDuration::deserialize(deserializer)?))
+      Ok(Self::new(Duration::deserialize(deserializer)?))
     }
   }
 };
@@ -198,7 +198,7 @@ const _: () = {
 /// A duration type that does not contain any padding bytes
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub(crate) struct Duration {
+pub(crate) struct PodDuration {
   secs_hi: u32,
   secs_lo: u32,
   nanos: u32,
@@ -210,7 +210,7 @@ const _: fn() = || {
     [u8;
       ::core::mem::size_of::<u32>() + ::core::mem::size_of::<u32>() + ::core::mem::size_of::<u32>()],
   );
-  let _ = ::core::mem::transmute::<Duration, TypeWithoutPadding>;
+  let _ = ::core::mem::transmute::<PodDuration, TypeWithoutPadding>;
 };
 const _: fn() = || {
   #[allow(clippy::missing_const_for_fn)]
@@ -236,10 +236,10 @@ const _: fn() = || {
     assert_impl::<u32>();
   }
 };
-unsafe impl ::bytemuck::NoUninit for Duration {}
+unsafe impl ::bytemuck::NoUninit for PodDuration {}
 
-impl Duration {
-  pub const fn from_std(d: StdDuration) -> Self {
+impl PodDuration {
+  pub const fn from_std(d: Duration) -> Self {
     let nanos = d.subsec_nanos();
     let secs = d.as_secs();
     Self {
@@ -249,9 +249,9 @@ impl Duration {
     }
   }
 
-  pub const fn to_std(self) -> StdDuration {
+  pub const fn to_std(self) -> Duration {
     let secs = (self.secs_hi as u64) << 32 | self.secs_lo as u64;
-    StdDuration::new(secs, self.nanos)
+    Duration::new(secs, self.nanos)
   }
 
   pub const fn into_bytes(self) -> [u8; 12] {

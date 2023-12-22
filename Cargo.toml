@@ -1,7 +1,7 @@
 
 [package]
 name = "atomic-time"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 repository = "https://github.com/al8n/atomic-time"
 homepage = "https://github.com/al8n/atomic-time"
@@ -13,6 +13,11 @@ keywords = [
   "atomic",
   "no_std",
   "atomic-duration"
+]
+categories = [
+  "development-tools",
+  "concurrency",
+  "no-std"
 ]
 
 [features]

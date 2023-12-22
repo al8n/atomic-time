@@ -10,3 +10,16 @@ mod duration;
 pub use duration::AtomicDuration;
 mod option_duration;
 pub use option_duration::AtomicOptionDuration;
+
+#[cfg(feature = "std")]
+mod system_time;
+
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use system_time::AtomicSystemTime;
+
+#[cfg(feature = "std")]
+mod option_system_time;
+#[cfg(feature = "std")]
+#[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+pub use option_system_time::AtomicOptionSystemTime;

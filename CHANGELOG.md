@@ -1,5 +1,11 @@
 # UNRELEASED
 
+# 0.1.2 (Dec 23rd, 2023)
+
+FEATURES
+
+- `AtomicSystemTime` and `AtomicOptionSystemTime` implementation.
+
 # 0.1.1 (Dec 22nd, 2023)
 
 FEATURES

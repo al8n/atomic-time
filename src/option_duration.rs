@@ -1,10 +1,10 @@
-use core::{sync::atomic::Ordering, time::Duration as StdDuration};
+use core::{sync::atomic::Ordering, time::Duration};
 
 use atomic::Atomic;
 
-use crate::duration::Duration;
+use crate::duration::PodDuration;
 
-/// Atomic version of `Option<Duration>`
+/// Atomic version of [`Option<Duration>`].
 #[repr(transparent)]
 pub struct AtomicOptionDuration(Atomic<OptionDuration>);
 
@@ -18,7 +18,7 @@ impl core::fmt::Debug for AtomicOptionDuration {
 
 impl AtomicOptionDuration {
   /// Creates a new `AtomicOptionDuration` with the given value.
-  pub const fn new(duration: Option<StdDuration>) -> Self {
+  pub const fn new(duration: Option<Duration>) -> Self {
     Self(Atomic::new(OptionDuration::from_std(duration)))
   }
 
@@ -28,7 +28,7 @@ impl AtomicOptionDuration {
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
-  pub fn load(&self, ordering: Ordering) -> Option<StdDuration> {
+  pub fn load(&self, ordering: Ordering) -> Option<Duration> {
     self.0.load(ordering).to_std()
   }
 
@@ -40,7 +40,7 @@ impl AtomicOptionDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
-  pub fn store(&self, val: Option<StdDuration>, ordering: Ordering) {
+  pub fn store(&self, val: Option<Duration>, ordering: Ordering) {
     self.0.store(OptionDuration::from_std(val), ordering)
   }
 
@@ -48,7 +48,7 @@ impl AtomicOptionDuration {
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
-  pub fn swap(&self, val: Option<StdDuration>, ordering: Ordering) -> Option<StdDuration> {
+  pub fn swap(&self, val: Option<Duration>, ordering: Ordering) -> Option<Duration> {
     self
       .0
       .swap(OptionDuration::from_std(val), ordering)
@@ -73,11 +73,11 @@ impl AtomicOptionDuration {
   /// [`compare_exchange`]: #method.compare_exchange
   pub fn compare_exchange_weak(
     &self,
-    current: Option<StdDuration>,
-    new: Option<StdDuration>,
+    current: Option<Duration>,
+    new: Option<Duration>,
     success: Ordering,
     failure: Ordering,
-  ) -> Result<Option<StdDuration>, Option<StdDuration>> {
+  ) -> Result<Option<Duration>, Option<Duration>> {
     self
       .0
       .compare_exchange_weak(
@@ -106,11 +106,11 @@ impl AtomicOptionDuration {
   /// [`compare_exchange`]: #method.compare_exchange
   pub fn compare_exchange(
     &self,
-    current: Option<StdDuration>,
-    new: Option<StdDuration>,
+    current: Option<Duration>,
+    new: Option<Duration>,
     success: Ordering,
     failure: Ordering,
-  ) -> Result<Option<StdDuration>, Option<StdDuration>> {
+  ) -> Result<Option<Duration>, Option<Duration>> {
     self
       .0
       .compare_exchange(
@@ -160,9 +160,9 @@ impl AtomicOptionDuration {
     set_order: Ordering,
     fetch_order: Ordering,
     mut f: F,
-  ) -> Result<Option<StdDuration>, Option<StdDuration>>
+  ) -> Result<Option<Duration>, Option<Duration>>
   where
-    F: FnMut(Option<StdDuration>) -> Option<Option<StdDuration>>,
+    F: FnMut(Option<Duration>) -> Option<Option<Duration>>,
   {
     self
       .0
@@ -178,7 +178,7 @@ impl AtomicOptionDuration {
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
   #[inline]
-  pub fn into_inner(self) -> Option<StdDuration> {
+  pub fn into_inner(self) -> Option<Duration> {
     self.0.into_inner().to_std()
   }
 }
@@ -195,7 +195,7 @@ const _: () = {
 
   impl<'de> Deserialize<'de> for AtomicOptionDuration {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-      Ok(Self::new(Option::<StdDuration>::deserialize(deserializer)?))
+      Ok(Self::new(Option::<Duration>::deserialize(deserializer)?))
     }
   }
 };
@@ -220,14 +220,14 @@ const _: fn() = || {
 unsafe impl ::bytemuck::NoUninit for OptionDuration {}
 
 impl OptionDuration {
-  const fn from_std(duration: Option<StdDuration>) -> Self {
+  const fn from_std(duration: Option<Duration>) -> Self {
     match duration {
-      Some(duration) => Self::new(Duration::from_std(duration)),
+      Some(duration) => Self::new(PodDuration::from_std(duration)),
       None => Self::none(),
     }
   }
 
-  const fn new(duration: Duration) -> Self {
+  const fn new(duration: PodDuration) -> Self {
     let bytes = duration.into_bytes();
     let bytes = [
       bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
@@ -240,7 +240,7 @@ impl OptionDuration {
     Self([0; 13]) // All zeros, including discriminant byte
   }
 
-  const fn to_option(self) -> Option<Duration> {
+  const fn to_option(self) -> Option<PodDuration> {
     if self.0[12] == 0 {
       None
     } else {
@@ -248,11 +248,11 @@ impl OptionDuration {
         self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5], self.0[6], self.0[7],
         self.0[8], self.0[9], self.0[10], self.0[11],
       ];
-      Some(Duration::from_bytes(bytes))
+      Some(PodDuration::from_bytes(bytes))
     }
   }
 
-  const fn to_std(self) -> Option<StdDuration> {
+  const fn to_std(self) -> Option<Duration> {
     match self.to_option() {
       Some(duration) => Some(duration.to_std()),
       None => None,
@@ -264,26 +264,26 @@ impl OptionDuration {
 mod tests {
   use super::*;
   use core::sync::atomic::Ordering;
-  use core::time::Duration as StdDuration;
+  use core::time::Duration;
 
   #[test]
   fn test_new_atomic_option_duration() {
-    let duration = StdDuration::from_secs(5);
+    let duration = Duration::from_secs(5);
     let atomic_duration = AtomicOptionDuration::new(Some(duration));
     assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(duration));
   }
 
   #[test]
   fn test_atomic_option_duration_load() {
-    let duration = StdDuration::from_secs(10);
+    let duration = Duration::from_secs(10);
     let atomic_duration = AtomicOptionDuration::new(Some(duration));
     assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(duration));
   }
 
   #[test]
   fn test_atomic_option_duration_store() {
-    let initial_duration = StdDuration::from_secs(3);
-    let new_duration = StdDuration::from_secs(7);
+    let initial_duration = Duration::from_secs(3);
+    let new_duration = Duration::from_secs(7);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
     atomic_duration.store(Some(new_duration), Ordering::SeqCst);
     assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(new_duration));
@@ -291,7 +291,7 @@ mod tests {
 
   #[test]
   fn test_atomic_option_duration_store_none() {
-    let initial_duration = StdDuration::from_secs(3);
+    let initial_duration = Duration::from_secs(3);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
     atomic_duration.store(None, Ordering::SeqCst);
     assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
@@ -299,8 +299,8 @@ mod tests {
 
   #[test]
   fn test_atomic_option_duration_swap() {
-    let initial_duration = StdDuration::from_secs(2);
-    let new_duration = StdDuration::from_secs(8);
+    let initial_duration = Duration::from_secs(2);
+    let new_duration = Duration::from_secs(8);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
     let prev_duration = atomic_duration.swap(Some(new_duration), Ordering::SeqCst);
     assert_eq!(prev_duration, Some(initial_duration));
@@ -309,13 +309,13 @@ mod tests {
 
   #[test]
   fn test_atomic_option_duration_compare_exchange_weak() {
-    let initial_duration = StdDuration::from_secs(4);
+    let initial_duration = Duration::from_secs(4);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Successful exchange
     let result = atomic_duration.compare_exchange_weak(
       Some(initial_duration),
-      Some(StdDuration::from_secs(6)),
+      Some(Duration::from_secs(6)),
       Ordering::SeqCst,
       Ordering::SeqCst,
     );
@@ -323,29 +323,29 @@ mod tests {
     assert_eq!(result.unwrap(), Some(initial_duration));
     assert_eq!(
       atomic_duration.load(Ordering::SeqCst),
-      Some(StdDuration::from_secs(6))
+      Some(Duration::from_secs(6))
     );
 
     // Failed exchange
     let result = atomic_duration.compare_exchange_weak(
       Some(initial_duration),
-      Some(StdDuration::from_secs(7)),
+      Some(Duration::from_secs(7)),
       Ordering::SeqCst,
       Ordering::SeqCst,
     );
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), Some(StdDuration::from_secs(6)));
+    assert_eq!(result.unwrap_err(), Some(Duration::from_secs(6)));
   }
 
   #[test]
   fn test_atomic_option_duration_compare_exchange() {
-    let initial_duration = StdDuration::from_secs(1);
+    let initial_duration = Duration::from_secs(1);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Successful exchange
     let result = atomic_duration.compare_exchange(
       Some(initial_duration),
-      Some(StdDuration::from_secs(5)),
+      Some(Duration::from_secs(5)),
       Ordering::SeqCst,
       Ordering::SeqCst,
     );
@@ -353,18 +353,18 @@ mod tests {
     assert_eq!(result.unwrap(), Some(initial_duration));
     assert_eq!(
       atomic_duration.load(Ordering::SeqCst),
-      Some(StdDuration::from_secs(5))
+      Some(Duration::from_secs(5))
     );
 
     // Failed exchange
     let result = atomic_duration.compare_exchange(
       Some(initial_duration),
-      Some(StdDuration::from_secs(6)),
+      Some(Duration::from_secs(6)),
       Ordering::SeqCst,
       Ordering::SeqCst,
     );
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), Some(StdDuration::from_secs(5)));
+    assert_eq!(result.unwrap_err(), Some(Duration::from_secs(5)));
   }
 
   #[test]
@@ -376,16 +376,16 @@ mod tests {
   #[test]
   fn test_atomic_option_duration_store_none_and_then_value() {
     let atomic_duration = AtomicOptionDuration::new(None);
-    atomic_duration.store(Some(StdDuration::from_secs(5)), Ordering::SeqCst);
+    atomic_duration.store(Some(Duration::from_secs(5)), Ordering::SeqCst);
     assert_eq!(
       atomic_duration.load(Ordering::SeqCst),
-      Some(StdDuration::from_secs(5))
+      Some(Duration::from_secs(5))
     );
   }
 
   #[test]
   fn test_atomic_option_duration_swap_with_none() {
-    let initial_duration = StdDuration::from_secs(2);
+    let initial_duration = Duration::from_secs(2);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
     let prev_duration = atomic_duration.swap(None, Ordering::SeqCst);
     assert_eq!(prev_duration, Some(initial_duration));
@@ -394,7 +394,7 @@ mod tests {
 
   #[test]
   fn test_atomic_option_duration_compare_exchange_weak_with_none() {
-    let initial_duration = StdDuration::from_secs(4);
+    let initial_duration = Duration::from_secs(4);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Change to None
@@ -408,7 +408,7 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
 
     // Change back to Some(Duration)
-    let new_duration = StdDuration::from_secs(6);
+    let new_duration = Duration::from_secs(6);
     let result = atomic_duration.compare_exchange_weak(
       None,
       Some(new_duration),
@@ -421,7 +421,7 @@ mod tests {
 
   #[test]
   fn test_atomic_option_duration_compare_exchange_with_none() {
-    let initial_duration = StdDuration::from_secs(1);
+    let initial_duration = Duration::from_secs(1);
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Change to None
@@ -435,7 +435,7 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
 
     // Change back to Some(Duration)
-    let new_duration = StdDuration::from_secs(5);
+    let new_duration = Duration::from_secs(5);
     let result = atomic_duration.compare_exchange(
       None,
       Some(new_duration),
@@ -452,7 +452,7 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_duration = Arc::new(AtomicOptionDuration::new(Some(StdDuration::from_secs(0))));
+    let atomic_duration = Arc::new(AtomicOptionDuration::new(Some(Duration::from_secs(0))));
     let mut handles = vec![];
 
     // Spawn multiple threads to increment the duration
@@ -463,8 +463,8 @@ mod tests {
           loop {
             let current = atomic_clone.load(Ordering::SeqCst);
             let new_duration = current
-              .map(|d| d + StdDuration::from_millis(1))
-              .or(Some(StdDuration::from_millis(1)));
+              .map(|d| d + Duration::from_millis(1))
+              .or(Some(Duration::from_millis(1)));
             match atomic_clone.compare_exchange_weak(
               current,
               new_duration,
@@ -486,7 +486,7 @@ mod tests {
     }
 
     // Verify the final value
-    let expected_duration = Some(StdDuration::from_millis(10 * 100));
+    let expected_duration = Some(Duration::from_millis(10 * 100));
     assert_eq!(atomic_duration.load(Ordering::SeqCst), expected_duration);
   }
 
@@ -501,13 +501,13 @@ mod tests {
     }
 
     let test = Test {
-      duration: AtomicOptionDuration::new(Some(StdDuration::from_secs(5))),
+      duration: AtomicOptionDuration::new(Some(Duration::from_secs(5))),
     };
     let serialized = serde_json::to_string(&test).unwrap();
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();
     assert_eq!(
       deserialized.duration.load(Ordering::SeqCst),
-      Some(StdDuration::from_secs(5))
+      Some(Duration::from_secs(5))
     );
 
     let test = Test {
