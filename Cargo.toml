@@ -1,27 +1,32 @@
-[package]
-name = "template-rs"
-version = "0.1.6"
-edition = "2021"
-repository = "https://github.com/al8n/template-rs"
-homepage = "https://github.com/al8n/template-rs"
-documentation = "https://docs.rs/template-rs"
-description = "A template for creating Rust open-source repo on GitHub"
-license = "MIT/Apache-2.0"
-rust-version = "1.73"
 
-[[bench]]
-path = "benches/foo.rs"
-name = "foo"
-harness = false
+[package]
+name = "atomic-time"
+version = "0.1.1"
+edition = "2021"
+repository = "https://github.com/al8n/atomic-time"
+homepage = "https://github.com/al8n/atomic-time"
+documentation = "https://docs.rs/atomic-time"
+description = "Atomic time related structs for Rust."
+license = "MIT/Apache-2.0"
+rust-version = "1.56"
+keywords = [
+  "atomic",
+  "no_std",
+  "atomic-duration"
+]
 
 [features]
-default = []
+default = ["std"]
+std = ["atomic/std"]
 
 [dependencies]
+atomic = "0.6"
+bytemuck = { version = "1" }
+
+serde = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
-criterion = "0.5"
-tempfile = "3"
+serde_json = "1"
 
 [profile.bench]
 opt-level = 3

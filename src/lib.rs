@@ -1,19 +1,12 @@
-//! A template for creating Rust open-source repo on GitHub
+//! Atomic time types
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, allow(unused_attributes))]
-#![deny(missing_docs)]
+#![deny(missing_docs, warnings)]
 
-/// template
-pub fn it_works() -> usize {
-  4
-}
+pub use core::sync::atomic::Ordering;
 
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_works() {
-    assert_eq!(it_works(), 4);
-  }
-}
+mod duration;
+pub use duration::AtomicDuration;
+mod option_duration;
+pub use option_duration::AtomicOptionDuration;
