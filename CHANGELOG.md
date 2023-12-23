@@ -4,7 +4,8 @@
 
 FEATURES
 
-- `AtomicSystemTime` and `AtomicOptionSystemTime` implementation.
+- `AtomicSystemTime` and `AtomicOptionSystemTime` implementations.
+- `AtomicInstant` and `AtomicOptionInstant` implementations.
 
 # 0.1.1 (Dec 22nd, 2023)
 

@@ -3,7 +3,7 @@
 </div>
 <div align="center">
 
-Atomic time related structs for Rust.
+`AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, `AtomicOptionSystemTime`, `AtomicInstant` and `AtomicOptionInstant` for Rust.
 
 [<img alt="github" src="https://img.shields.io/badge/github-al8n/atomic--time-8da0cb?style=for-the-badge&logo=Github" height="22">][Github-url]
 [<img alt="Build" src="https://img.shields.io/github/actions/workflow/status/al8n/atomic-time/ci.yml?logo=Github-Actions&style=for-the-badge" height="22">][CI-url]
@@ -25,6 +25,20 @@ English | [简体中文][zh-cn-url]
 [dependencies]
 atomic-time = "0.1"
 ```
+
+## Test
+
+- Rust test
+
+  ```bash
+  cargo test
+  ```
+
+- `miri` test
+
+  ```bash
+  cargo miri test
+  ```
 
 #### License
 

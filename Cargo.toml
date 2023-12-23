@@ -6,13 +6,15 @@ edition = "2021"
 repository = "https://github.com/al8n/atomic-time"
 homepage = "https://github.com/al8n/atomic-time"
 documentation = "https://docs.rs/atomic-time"
-description = "Atomic time related structs for Rust."
+description = "`AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, `AtomicOptionSystemTime`, `AtomicInstant` and `AtomicOptionInstant` for Rust."
 license = "MIT/Apache-2.0"
-rust-version = "1.56"
+rust-version = "1.70"
 keywords = [
   "atomic",
   "no_std",
-  "atomic-duration"
+  "atomic-duration",
+  "atomic-instant",
+  "atomic-systemtime",
 ]
 categories = [
   "development-tools",

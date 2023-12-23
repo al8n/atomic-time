@@ -17,6 +17,15 @@ impl Default for AtomicOptionSystemTime {
 
 impl AtomicOptionSystemTime {
   /// Equivalent to atomic version `Option::<SystemTime>>::None`.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  ///
+  /// let none = AtomicOptionSystemTime::none();
+  /// assert_eq!(none.load(std::sync::atomic::Ordering::SeqCst), None);
+  /// ```
   #[inline]
   pub const fn none() -> Self {
     Self(AtomicOptionDuration::new(None))

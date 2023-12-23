@@ -303,6 +303,26 @@ jobs:
       - name: Run valgrind atomic_option_system_time
         run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/atomic_option_system_time
         working-directory: integration
+      
+      # Compile tests
+      - name: cargo build atomic_instant
+        run: cargo build --bin atomic_instant
+        working-directory: integration
+
+      # Run with valgrind
+      - name: Run valgrind atomic_instant
+        run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/atomic_instant
+        working-directory: integration
+      
+      # Compile tests
+      - name: cargo build atomic_option_instant
+        run: cargo build --bin atomic_option_instant
+        working-directory: integration
+
+      # Run with valgrind
+      - name: Run valgrind atomic_option_instant
+        run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/atomic_option_instant
+        working-directory: integration
 
   docs:
     name: docs
