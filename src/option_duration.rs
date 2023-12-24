@@ -1,13 +1,9 @@
+use crate::AtomicU128;
 use core::{sync::atomic::Ordering, time::Duration};
-
-use atomic::Atomic;
-
-use crate::duration::PodDuration;
 
 /// Atomic version of [`Option<Duration>`].
 #[repr(transparent)]
-pub struct AtomicOptionDuration(Atomic<OptionDuration>);
-
+pub struct AtomicOptionDuration(AtomicU128);
 impl core::fmt::Debug for AtomicOptionDuration {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_tuple("AtomicOptionDuration")
@@ -15,13 +11,11 @@ impl core::fmt::Debug for AtomicOptionDuration {
       .finish()
   }
 }
-
 impl AtomicOptionDuration {
   /// Creates a new `AtomicOptionDuration` with the given value.
   pub const fn new(duration: Option<Duration>) -> Self {
-    Self(Atomic::new(OptionDuration::from_std(duration)))
+    Self(AtomicU128::new(encode_option_duration(duration)))
   }
-
   /// Loads `Option<Duration>` from `AtomicOptionDuration`.
   ///
   /// load takes an [`Ordering`] argument which describes the memory ordering of this operation.
@@ -29,9 +23,8 @@ impl AtomicOptionDuration {
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
   pub fn load(&self, ordering: Ordering) -> Option<Duration> {
-    self.0.load(ordering).to_std()
+    decode_option_duration(self.0.load(ordering))
   }
-
   /// Stores a value into the `AtomicOptionDuration`.
   ///
   /// `store` takes an [`Ordering`] argument which describes the memory ordering
@@ -41,20 +34,15 @@ impl AtomicOptionDuration {
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
   pub fn store(&self, val: Option<Duration>, ordering: Ordering) {
-    self.0.store(OptionDuration::from_std(val), ordering)
+    self.0.store(encode_option_duration(val), ordering)
   }
-
   /// Stores a value into the `AtomicOptionDuration`, returning the old value.
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
   pub fn swap(&self, val: Option<Duration>, ordering: Ordering) -> Option<Duration> {
-    self
-      .0
-      .swap(OptionDuration::from_std(val), ordering)
-      .to_std()
+    decode_option_duration(self.0.swap(encode_option_duration(val), ordering))
   }
-
   /// Stores a value into the `AtomicOptionDuration` if the current value is the same as the
   /// `current` value.
   ///
@@ -81,15 +69,14 @@ impl AtomicOptionDuration {
     self
       .0
       .compare_exchange_weak(
-        OptionDuration::from_std(current),
-        OptionDuration::from_std(new),
+        encode_option_duration(current),
+        encode_option_duration(new),
         success,
         failure,
       )
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_option_duration)
+      .map_err(decode_option_duration)
   }
-
   /// Stores a value into the `AtomicOptionDuration` if the current value is the same as the
   /// `current` value.
   ///
@@ -114,15 +101,14 @@ impl AtomicOptionDuration {
     self
       .0
       .compare_exchange(
-        OptionDuration::from_std(current),
-        OptionDuration::from_std(new),
+        encode_option_duration(current),
+        encode_option_duration(new),
         success,
         failure,
       )
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_option_duration)
+      .map_err(decode_option_duration)
   }
-
   /// Fetches the value, and applies a function to it that returns an optional
   /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
   /// `Err(previous_value)`.
@@ -167,19 +153,37 @@ impl AtomicOptionDuration {
     self
       .0
       .fetch_update(set_order, fetch_order, |d| {
-        f(d.to_std()).map(OptionDuration::from_std)
+        f(decode_option_duration(d)).map(encode_option_duration)
       })
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_option_duration)
+      .map_err(decode_option_duration)
   }
-
   /// Consumes the atomic and returns the contained value.
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
   #[inline]
   pub fn into_inner(self) -> Option<Duration> {
-    self.0.into_inner().to_std()
+    decode_option_duration(self.0.into_inner())
+  }
+}
+const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
+  match option_duration {
+    Some(duration) => {
+      let seconds = duration.as_secs() as u128;
+      let nanos = duration.subsec_nanos() as u128;
+      (1 << 127) | (seconds << 32) | nanos
+    }
+    None => 0,
+  }
+}
+const fn decode_option_duration(encoded: u128) -> Option<Duration> {
+  if encoded >> 127 == 0 {
+    None
+  } else {
+    let seconds = ((encoded << 1) >> 33) as u64;
+    let nanos = (encoded & 0xFFFFFFFF) as u32;
+    Some(Duration::new(seconds, nanos))
   }
 }
 
@@ -199,66 +203,6 @@ const _: () = {
     }
   }
 };
-
-#[derive(Clone, Copy)]
-#[repr(transparent)]
-struct OptionDuration([u8; 13]); // 12 bytes for Duration, 1 byte for discriminant
-
-const _: fn() = || {
-  #[doc(hidden)]
-  struct TypeWithoutPadding([u8; ::core::mem::size_of::<[u8; 13]>()]);
-  let _ = ::core::mem::transmute::<OptionDuration, TypeWithoutPadding>;
-};
-const _: fn() = || {
-  #[allow(clippy::missing_const_for_fn)]
-  #[doc(hidden)]
-  fn check() {
-    fn assert_impl<T: ::bytemuck::NoUninit>() {}
-    assert_impl::<[u8; 13]>();
-  }
-};
-unsafe impl ::bytemuck::NoUninit for OptionDuration {}
-
-impl OptionDuration {
-  const fn from_std(duration: Option<Duration>) -> Self {
-    match duration {
-      Some(duration) => Self::new(PodDuration::from_std(duration)),
-      None => Self::none(),
-    }
-  }
-
-  const fn new(duration: PodDuration) -> Self {
-    let bytes = duration.into_bytes();
-    let bytes = [
-      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
-      bytes[9], bytes[10], bytes[11], 1,
-    ];
-    Self(bytes)
-  }
-
-  const fn none() -> Self {
-    Self([0; 13]) // All zeros, including discriminant byte
-  }
-
-  const fn to_option(self) -> Option<PodDuration> {
-    if self.0[12] == 0 {
-      None
-    } else {
-      let bytes = [
-        self.0[0], self.0[1], self.0[2], self.0[3], self.0[4], self.0[5], self.0[6], self.0[7],
-        self.0[8], self.0[9], self.0[10], self.0[11],
-      ];
-      Some(PodDuration::from_bytes(bytes))
-    }
-  }
-
-  const fn to_std(self) -> Option<Duration> {
-    match self.to_option() {
-      Some(duration) => Some(duration.to_std()),
-      None => None,
-    }
-  }
-}
 
 #[cfg(test)]
 mod tests {

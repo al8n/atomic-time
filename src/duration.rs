@@ -1,11 +1,9 @@
+use crate::AtomicU128;
 use core::{sync::atomic::Ordering, time::Duration};
-
-use atomic::Atomic;
 
 /// Atomic version of [`Duration`]
 #[repr(transparent)]
-pub struct AtomicDuration(Atomic<PodDuration>);
-
+pub struct AtomicDuration(AtomicU128);
 impl core::fmt::Debug for AtomicDuration {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     f.debug_tuple("AtomicDuration")
@@ -13,13 +11,11 @@ impl core::fmt::Debug for AtomicDuration {
       .finish()
   }
 }
-
 impl AtomicDuration {
   /// Creates a new `AtomicDuration` with the given value.
   pub const fn new(duration: Duration) -> Self {
-    Self(Atomic::new(PodDuration::from_std(duration)))
+    Self(AtomicU128::new(encode_duration(duration)))
   }
-
   /// Loads [`Duration`](Duration) from `AtomicDuration`.
   ///
   /// load takes an [`Ordering`] argument which describes the memory ordering of this operation.
@@ -27,9 +23,8 @@ impl AtomicDuration {
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
   pub fn load(&self, ordering: Ordering) -> Duration {
-    self.0.load(ordering).to_std()
+    decode_duration(self.0.load(ordering))
   }
-
   /// Stores a value into the `AtomicDuration`.
   ///
   /// `store` takes an [`Ordering`] argument which describes the memory ordering
@@ -39,17 +34,15 @@ impl AtomicDuration {
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
   pub fn store(&self, val: Duration, ordering: Ordering) {
-    self.0.store(PodDuration::from_std(val), ordering)
+    self.0.store(encode_duration(val), ordering)
   }
-
   /// Stores a value into the `AtomicDuration`, returning the old value.
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
   pub fn swap(&self, val: Duration, ordering: Ordering) -> Duration {
-    self.0.swap(PodDuration::from_std(val), ordering).to_std()
+    decode_duration(self.0.swap(encode_duration(val), ordering))
   }
-
   /// Stores a value into the `AtomicDuration` if the current value is the same as the
   /// `current` value.
   ///
@@ -76,15 +69,14 @@ impl AtomicDuration {
     self
       .0
       .compare_exchange_weak(
-        PodDuration::from_std(current),
-        PodDuration::from_std(new),
+        encode_duration(current),
+        encode_duration(new),
         success,
         failure,
       )
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_duration)
+      .map_err(decode_duration)
   }
-
   /// Stores a value into the `AtomicDuration` if the current value is the same as the
   /// `current` value.
   ///
@@ -109,15 +101,14 @@ impl AtomicDuration {
     self
       .0
       .compare_exchange(
-        PodDuration::from_std(current),
-        PodDuration::from_std(new),
+        encode_duration(current),
+        encode_duration(new),
         success,
         failure,
       )
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_duration)
+      .map_err(decode_duration)
   }
-
   /// Fetches the value, and applies a function to it that returns an optional
   /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
   /// `Err(previous_value)`.
@@ -162,20 +153,31 @@ impl AtomicDuration {
     self
       .0
       .fetch_update(set_order, fetch_order, |d| {
-        f(d.to_std()).map(PodDuration::from_std)
+        f(decode_duration(d)).map(encode_duration)
       })
-      .map(|d| d.to_std())
-      .map_err(|d| d.to_std())
+      .map(decode_duration)
+      .map_err(decode_duration)
   }
-
   /// Consumes the atomic and returns the contained value.
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
   #[inline]
   pub fn into_inner(self) -> Duration {
-    self.0.into_inner().to_std()
+    decode_duration(self.0.into_inner())
   }
+}
+
+const fn encode_duration(duration: Duration) -> u128 {
+  let seconds = duration.as_secs() as u128;
+  let nanos = duration.subsec_nanos() as u128;
+  (seconds << 32) + nanos
+}
+
+const fn decode_duration(encoded: u128) -> Duration {
+  let seconds = (encoded >> 32) as u64;
+  let nanos = (encoded & 0xFFFFFFFF) as u32;
+  Duration::new(seconds, nanos)
 }
 
 #[cfg(feature = "serde")]
@@ -194,88 +196,6 @@ const _: () = {
     }
   }
 };
-
-/// A duration type that does not contain any padding bytes
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub(crate) struct PodDuration {
-  secs_hi: u32,
-  secs_lo: u32,
-  nanos: u32,
-}
-
-const _: fn() = || {
-  #[doc(hidden)]
-  struct TypeWithoutPadding(
-    [u8;
-      ::core::mem::size_of::<u32>() + ::core::mem::size_of::<u32>() + ::core::mem::size_of::<u32>()],
-  );
-  let _ = ::core::mem::transmute::<PodDuration, TypeWithoutPadding>;
-};
-const _: fn() = || {
-  #[allow(clippy::missing_const_for_fn)]
-  #[doc(hidden)]
-  fn check() {
-    fn assert_impl<T: ::bytemuck::NoUninit>() {}
-    assert_impl::<u32>();
-  }
-};
-const _: fn() = || {
-  #[allow(clippy::missing_const_for_fn)]
-  #[doc(hidden)]
-  fn check() {
-    fn assert_impl<T: ::bytemuck::NoUninit>() {}
-    assert_impl::<u32>();
-  }
-};
-const _: fn() = || {
-  #[allow(clippy::missing_const_for_fn)]
-  #[doc(hidden)]
-  fn check() {
-    fn assert_impl<T: ::bytemuck::NoUninit>() {}
-    assert_impl::<u32>();
-  }
-};
-unsafe impl ::bytemuck::NoUninit for PodDuration {}
-
-impl PodDuration {
-  pub const fn from_std(d: Duration) -> Self {
-    let nanos = d.subsec_nanos();
-    let secs = d.as_secs();
-    Self {
-      secs_hi: (secs >> 32) as u32,
-      secs_lo: secs as u32,
-      nanos,
-    }
-  }
-
-  pub const fn to_std(self) -> Duration {
-    let secs = (self.secs_hi as u64) << 32 | self.secs_lo as u64;
-    Duration::new(secs, self.nanos)
-  }
-
-  pub const fn into_bytes(self) -> [u8; 12] {
-    let secs_hi = self.secs_hi.to_be_bytes();
-    let secs_lo = self.secs_lo.to_be_bytes();
-    let nanos = self.nanos.to_be_bytes();
-    [
-      secs_hi[0], secs_hi[1], secs_hi[2], secs_hi[3], secs_lo[0], secs_lo[1], secs_lo[2],
-      secs_lo[3], nanos[0], nanos[1], nanos[2], nanos[3],
-    ]
-  }
-
-  pub const fn from_bytes(bytes: [u8; 12]) -> Self {
-    let secs_hi = [bytes[0], bytes[1], bytes[2], bytes[3]];
-    let secs_lo = [bytes[4], bytes[5], bytes[6], bytes[7]];
-    let nanos = [bytes[8], bytes[9], bytes[10], bytes[11]];
-
-    Self {
-      secs_hi: u32::from_be_bytes(secs_hi),
-      secs_lo: u32::from_be_bytes(secs_lo),
-      nanos: u32::from_be_bytes(nanos),
-    }
-  }
-}
 
 #[cfg(test)]
 mod tests {

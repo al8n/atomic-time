@@ -40,6 +40,12 @@ atomic-time = "0.1"
   cargo miri test
   ```
 
+## Benchmarks
+
+```bash
+cargo bench
+```
+
 #### License
 
 `atomic-time` is under the terms of both the MIT license and the

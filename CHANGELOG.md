@@ -1,5 +1,12 @@
 # UNRELEASED
 
+# 0.1.3 (Dec 24th, 2023)
+
+FEATURES
+
+- Replace `atomic` by using `core::sync::atomic::AtomicU128` in nightly or `portable-atomic` in stable.
+- Add benchmarks
+
 # 0.1.2 (Dec 23rd, 2023)
 
 FEATURES
