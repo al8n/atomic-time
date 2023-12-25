@@ -1,5 +1,12 @@
 # UNRELEASED
 
+# 0.1.4 (Dec 26th, 2023)
+
+FEATURES
+
+- Exports `decode_duration`, `encode_duration`, `decode_option_duration`, `encode_option_duration`, `decode_instant_from_duration`, `encode_instant_to_duration`.
+- Add `is_lock_free` fn for all atomic structs.
+
 # 0.1.3 (Dec 24th, 2023)
 
 FEATURES

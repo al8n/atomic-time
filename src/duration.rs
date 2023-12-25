@@ -166,15 +166,33 @@ impl AtomicDuration {
   pub fn into_inner(self) -> Duration {
     decode_duration(self.0.into_inner())
   }
+
+  /// Returns `true` if operations on values of this type are lock-free.
+  /// If the compiler or the platform doesn't support the necessary
+  /// atomic instructions, global locks for every potentially
+  /// concurrent atomic operation will be used.
+  ///
+  /// # Examples
+  /// ```
+  /// use atomic_time::AtomicDuration;
+  ///
+  /// let is_lock_free = AtomicDuration::is_lock_free();
+  /// ```
+  #[inline]
+  pub fn is_lock_free() -> bool {
+    AtomicU128::is_lock_free()
+  }
 }
 
-const fn encode_duration(duration: Duration) -> u128 {
+/// Encodes a [`Duration`] into a [`u128`].
+pub const fn encode_duration(duration: Duration) -> u128 {
   let seconds = duration.as_secs() as u128;
   let nanos = duration.subsec_nanos() as u128;
   (seconds << 32) + nanos
 }
 
-const fn decode_duration(encoded: u128) -> Duration {
+/// Decodes a [`u128`] from a [`Duration`].
+pub const fn decode_duration(encoded: u128) -> Duration {
   let seconds = (encoded >> 32) as u64;
   let nanos = (encoded & 0xFFFFFFFF) as u32;
   Duration::new(seconds, nanos)

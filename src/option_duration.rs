@@ -12,6 +12,11 @@ impl core::fmt::Debug for AtomicOptionDuration {
   }
 }
 impl AtomicOptionDuration {
+  /// Creates a new `AtomicOptionDuration` with `None`.
+  pub const fn none() -> Self {
+    Self(AtomicU128::new(encode_option_duration(None)))
+  }
+
   /// Creates a new `AtomicOptionDuration` with the given value.
   pub const fn new(duration: Option<Duration>) -> Self {
     Self(AtomicU128::new(encode_option_duration(duration)))
@@ -166,8 +171,26 @@ impl AtomicOptionDuration {
   pub fn into_inner(self) -> Option<Duration> {
     decode_option_duration(self.0.into_inner())
   }
+
+  /// Returns `true` if operations on values of this type are lock-free.
+  /// If the compiler or the platform doesn't support the necessary
+  /// atomic instructions, global locks for every potentially
+  /// concurrent atomic operation will be used.
+  ///
+  /// # Examples
+  /// ```
+  /// use atomic_time::AtomicOptionDuration;
+  ///
+  /// let is_lock_free = AtomicOptionDuration::is_lock_free();
+  /// ```
+  #[inline]
+  pub fn is_lock_free() -> bool {
+    AtomicU128::is_lock_free()
+  }
 }
-const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
+
+/// Encode an [`Option<Duration>`] into an [`u128`].
+pub const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
   match option_duration {
     Some(duration) => {
       let seconds = duration.as_secs() as u128;
@@ -177,7 +200,9 @@ const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
     None => 0,
   }
 }
-const fn decode_option_duration(encoded: u128) -> Option<Duration> {
+
+/// Decode an [`Option<Duration>`] from an encoded [`u128`].
+pub const fn decode_option_duration(encoded: u128) -> Option<Duration> {
   if encoded >> 127 == 0 {
     None
   } else {

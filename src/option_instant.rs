@@ -160,10 +160,27 @@ impl AtomicOptionInstant {
       .map(|duration| duration.map(decode_instant_from_duration))
       .map_err(|duration| duration.map(decode_instant_from_duration))
   }
+
+  /// Returns `true` if operations on values of this type are lock-free.
+  /// If the compiler or the platform doesn't support the necessary
+  /// atomic instructions, global locks for every potentially
+  /// concurrent atomic operation will be used.
+  ///
+  /// # Examples
+  /// ```
+  /// use atomic_time::AtomicOptionInstant;
+  ///
+  /// let is_lock_free = AtomicOptionInstant::is_lock_free();
+  /// ```
+  #[inline]
+  pub fn is_lock_free() -> bool {
+    AtomicU128::is_lock_free()
+  }
 }
 
 #[cfg(feature = "serde")]
 const _: () = {
+  use core::time::Duration;
   use serde::{Deserialize, Serialize};
 
   impl Serialize for AtomicOptionInstant {
@@ -318,6 +335,8 @@ mod tests {
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_system_time_serde() {
+    use std::time::SystemTime;
+
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]

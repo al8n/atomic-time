@@ -191,6 +191,22 @@ impl AtomicOptionSystemTime {
       .map(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
       .map_err(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
   }
+
+  /// Returns `true` if operations on values of this type are lock-free.
+  /// If the compiler or the platform doesn't support the necessary
+  /// atomic instructions, global locks for every potentially
+  /// concurrent atomic operation will be used.
+  ///
+  /// # Examples
+  /// ```
+  /// use atomic_time::AtomicOptionSystemTime;
+  ///
+  /// let is_lock_free = AtomicOptionSystemTime::is_lock_free();
+  /// ```
+  #[inline]
+  pub fn is_lock_free() -> bool {
+    AtomicOptionDuration::is_lock_free()
+  }
 }
 
 #[cfg(feature = "serde")]
