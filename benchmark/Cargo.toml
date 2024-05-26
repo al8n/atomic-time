@@ -1,0 +1,19 @@
+[package]
+name = "atomic-time-benchmark"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+atomic-time = { path = "../" }
+
+[dev-dependencies]
+criterion = "0.5"
+serde_json = "1"
+parking_lot = "0.12"
+arc-swap = "1"
+
+[[bench]]
+path = "benches/bench.rs"
+name = "bench"
+harness = false

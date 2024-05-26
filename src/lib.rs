@@ -17,14 +17,13 @@ pub use option_duration::AtomicOptionDuration;
 /// Utility functions for encoding/decoding [`Duration`] to other types.
 pub mod utils {
   #[cfg(feature = "std")]
-  use std::{
-    sync::OnceLock,
-    time::{Duration, Instant, SystemTime},
-  };
+  use std::time::{Duration, Instant, SystemTime};
 
   #[cfg(feature = "std")]
   fn init(now: Instant) -> (SystemTime, Instant) {
-    static ONCE: OnceLock<(SystemTime, Instant)> = OnceLock::new();
+    static ONCE: once_cell::sync::OnceCell<(SystemTime, Instant)> =
+      once_cell::sync::OnceCell::new();
+
     *ONCE.get_or_init(|| {
       let system_now = SystemTime::now();
       (system_now, now)

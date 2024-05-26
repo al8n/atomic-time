@@ -232,8 +232,6 @@ const _: () = {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use core::sync::atomic::Ordering;
-  use core::time::Duration;
 
   #[test]
   fn test_new_atomic_option_duration() {
@@ -282,12 +280,20 @@ mod tests {
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Successful exchange
-    let result = atomic_duration.compare_exchange_weak(
-      Some(initial_duration),
-      Some(Duration::from_secs(6)),
-      Ordering::SeqCst,
-      Ordering::SeqCst,
-    );
+    let mut result;
+    loop {
+      result = atomic_duration.compare_exchange_weak(
+        Some(initial_duration),
+        Some(Duration::from_secs(6)),
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+      );
+
+      if result.is_ok() {
+        break;
+      }
+    }
+
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), Some(initial_duration));
     assert_eq!(
@@ -367,12 +373,20 @@ mod tests {
     let atomic_duration = AtomicOptionDuration::new(Some(initial_duration));
 
     // Change to None
-    let result = atomic_duration.compare_exchange_weak(
-      Some(initial_duration),
-      None,
-      Ordering::SeqCst,
-      Ordering::SeqCst,
-    );
+    let mut result;
+
+    loop {
+      result = atomic_duration.compare_exchange_weak(
+        Some(initial_duration),
+        None,
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+      );
+      if result.is_ok() {
+        break;
+      }
+    }
+
     assert!(result.is_ok());
     assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
 

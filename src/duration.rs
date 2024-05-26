@@ -218,7 +218,6 @@ const _: () = {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use core::{sync::atomic::Ordering, time::Duration};
 
   #[test]
   fn test_atomic_duration_new() {

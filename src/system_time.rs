@@ -203,8 +203,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use core::sync::atomic::Ordering;
-  use std::time::{Duration, SystemTime};
+  use std::time::Duration;
 
   #[test]
   fn test_atomic_system_time_now() {
@@ -252,7 +251,7 @@ mod tests {
     loop {
       result =
         atomic_time.compare_exchange_weak(now, after_one_sec, Ordering::SeqCst, Ordering::SeqCst);
-      if result.is_ok() || result.unwrap_err() != now {
+      if result.is_ok() {
         break;
       }
     }

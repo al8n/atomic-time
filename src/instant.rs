@@ -1,4 +1,4 @@
-use std::{sync::atomic::Ordering, time::Instant};
+use std::time::Instant;
 
 use super::*;
 
@@ -171,8 +171,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::sync::atomic::Ordering;
-  use std::time::{Duration, Instant};
+  use std::time::Duration;
 
   #[test]
   fn test_atomic_instant_now() {
@@ -235,7 +234,7 @@ mod tests {
         Ordering::SeqCst,
         Ordering::SeqCst,
       );
-      if result.is_ok() || result.unwrap_err() != now {
+      if result.is_ok() {
         break;
       }
     }

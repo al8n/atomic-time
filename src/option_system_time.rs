@@ -229,8 +229,7 @@ const _: () = {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::sync::atomic::Ordering;
-  use std::time::{Duration, SystemTime};
+  use std::time::Duration;
 
   #[test]
   fn test_atomic_option_system_time_now() {
@@ -300,7 +299,7 @@ mod tests {
         Ordering::SeqCst,
         Ordering::SeqCst,
       );
-      if result.is_ok() || result.unwrap_err() != Some(now) {
+      if result.is_ok() {
         break;
       }
     }
