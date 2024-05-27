@@ -382,23 +382,30 @@ mod tests {
         Ordering::SeqCst,
         Ordering::SeqCst,
       );
+
       if result.is_ok() {
         break;
       }
     }
 
-    assert!(result.is_ok());
     assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
 
     // Change back to Some(Duration)
     let new_duration = Duration::from_secs(6);
-    let result = atomic_duration.compare_exchange_weak(
-      None,
-      Some(new_duration),
-      Ordering::SeqCst,
-      Ordering::SeqCst,
-    );
-    assert!(result.is_ok());
+    let mut result;
+
+    loop {
+      result = atomic_duration.compare_exchange_weak(
+        None,
+        Some(new_duration),
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+      );
+      if result.is_ok() {
+        break;
+      }
+    }
+
     assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(new_duration));
   }
 
