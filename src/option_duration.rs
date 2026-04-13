@@ -11,6 +11,19 @@ impl core::fmt::Debug for AtomicOptionDuration {
       .finish()
   }
 }
+impl Default for AtomicOptionDuration {
+  /// Creates an `AtomicOptionDuration` initialized to `None`.
+  #[inline]
+  fn default() -> Self {
+    Self::none()
+  }
+}
+impl From<Option<Duration>> for AtomicOptionDuration {
+  #[inline]
+  fn from(duration: Option<Duration>) -> Self {
+    Self::new(duration)
+  }
+}
 impl AtomicOptionDuration {
   /// Creates a new `AtomicOptionDuration` with `None`.
   pub const fn none() -> Self {

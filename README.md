@@ -3,7 +3,7 @@
 </div>
 <div align="center">
 
-`AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, `AtomicOptionSystemTime`, `AtomicInstant` and `AtomicOptionInstant` for Rust.
+Lock-free, thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants
 
 [<img alt="github" src="https://img.shields.io/badge/github-al8n/atomic--time-8da0cb?style=for-the-badge&logo=Github" height="22">][Github-url]
 <img alt="LoC" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fal8n%2F327b2a8aef9003246e45c6e47fe63937%2Fraw%2Fatomic-time" height="22">
@@ -19,41 +19,120 @@ English | [简体中文][zh-cn-url]
 
 </div>
 
+## Introduction
+
+`atomic-time` provides lock-free, thread-safe atomic versions of Rust's standard time types. All types use `AtomicU128` (via [`portable-atomic`](https://crates.io/crates/portable-atomic)) under the hood and expose the same API patterns as the standard `std::sync::atomic` types (`load`, `store`, `swap`, `compare_exchange`, `compare_exchange_weak`, `fetch_update`).
+
+### Types
+
+| Type | Wraps | `no_std` |
+|------|-------|----------|
+| `AtomicDuration` | `Duration` | Yes |
+| `AtomicOptionDuration` | `Option<Duration>` | Yes |
+| `AtomicSystemTime` | `SystemTime` | No |
+| `AtomicOptionSystemTime` | `Option<SystemTime>` | No |
+| `AtomicInstant` | `Instant` | No |
+| `AtomicOptionInstant` | `Option<Instant>` | No |
+
 ## Installation
 
 ```toml
 [dependencies]
-atomic-time = "0.1"
+atomic-time = "0.2"
 ```
 
-## Test
+### Feature Flags
 
-- Rust test
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `std` | Yes | Enables `SystemTime` and `Instant` types |
+| `serde` | No | Enables `Serialize`/`Deserialize` for all types |
 
-  ```bash
-  cargo test
-  ```
+For `no_std` environments (only `AtomicDuration` and `AtomicOptionDuration` are available):
 
-- `miri` test
+```toml
+[dependencies]
+atomic-time = { version = "0.2", default-features = false }
+```
 
-  ```bash
-  cargo miri test
-  ```
+## Example
+
+```rust
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use atomic_time::AtomicDuration;
+
+let timeout = Arc::new(AtomicDuration::new(Duration::from_secs(30)));
+
+// Update from another thread
+let timeout_clone = timeout.clone();
+std::thread::spawn(move || {
+    timeout_clone.store(Duration::from_secs(60), Ordering::Release);
+});
+```
+
+```rust
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use atomic_time::AtomicOptionInstant;
+
+// Track the last time an event occurred
+let last_event = AtomicOptionInstant::none();
+assert_eq!(last_event.load(Ordering::Relaxed), None);
+
+last_event.store(Some(Instant::now()), Ordering::Release);
+assert!(last_event.load(Ordering::Acquire).is_some());
+```
 
 ## Benchmarks
 
-```bash
-cargo bench
-```
+Run with `cargo bench` in the `benchmark/` directory. Apple M4 Pro.
 
-#### License
+### Duration (`cargo bench --bench duration`)
+
+| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
+|---|---|---|---|---|
+| `AtomicDuration` | 1.32 ns | 0.99 ns | 1.34 ns | 6.86 ns |
+| `AtomicOptionDuration` | 1.25 ns | 1.24 ns | 1.29 ns | 5.75 ns |
+| `ArcSwap<Duration>` | 2.35 ns | 93.63 ns | 2.37 ns | 11.73 ns |
+| `parking_lot::RwLock` | 3.62 ns | 2.20 ns | 46.92 ns | 218.22 ns |
+| `std::sync::RwLock` | 4.74 ns | 2.36 ns | 436.14 ns | 118.22 ns |
+
+### Instant (`cargo bench --bench instant`)
+
+| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
+|---|---|---|---|---|
+| `AtomicInstant` | 2.99 ns | 3.99 ns | 3.12 ns | 14.82 ns |
+| `AtomicOptionInstant` | 3.30 ns | 4.23 ns | 3.59 ns | 16.97 ns |
+| `ArcSwap<Instant>` | 2.30 ns | 85.67 ns | 2.40 ns | 15.51 ns |
+| `parking_lot::RwLock` | 3.42 ns | 2.13 ns | 8.70 ns | 197.00 ns |
+| `std::sync::RwLock` | 4.54 ns | 2.32 ns | 482.79 ns | 90.49 ns |
+
+### SystemTime (`cargo bench --bench system_time`)
+
+| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
+|---|---|---|---|---|
+| `AtomicSystemTime` | 2.19 ns | 3.56 ns | 2.32 ns | 10.58 ns |
+| `AtomicOptionSystemTime` | 2.55 ns | 3.27 ns | 2.68 ns | 11.08 ns |
+| `ArcSwap<SystemTime>` | 2.30 ns | 88.93 ns | 2.41 ns | 17.49 ns |
+| `parking_lot::RwLock` | 3.47 ns | 2.13 ns | 31.16 ns | 235.82 ns |
+| `std::sync::RwLock` | 4.52 ns | 2.31 ns | 561.88 ns | 106.58 ns |
+
+> Contended = 4 background threads reading (contended read) or writing (contended write), load measured on main thread.
+
+## MSRV
+
+The minimum supported Rust version is **1.70.0**.
+
+## License
 
 `atomic-time` is under the terms of both the MIT license and the
 Apache License (Version 2.0).
 
 See [LICENSE-APACHE](LICENSE-APACHE), [LICENSE-MIT](LICENSE-MIT) for details.
 
-Copyright (c) 2023 Al Liu.
+Copyright (c) 2026 Al Liu.
 
 [Github-url]: https://github.com/al8n/atomic-time/
 [CI-url]: https://github.com/al8n/atomic-time/actions/workflows/ci.yml

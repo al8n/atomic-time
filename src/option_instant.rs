@@ -6,16 +6,29 @@ use super::*;
 #[repr(transparent)]
 pub struct AtomicOptionInstant(AtomicOptionDuration);
 
+impl core::fmt::Debug for AtomicOptionInstant {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_tuple("AtomicOptionInstant")
+      .field(&self.load(Ordering::SeqCst))
+      .finish()
+  }
+}
 impl Default for AtomicOptionInstant {
-  /// Equivalent to `Option::<SystemTime>>::None`.
+  /// Equivalent to `Option::<Instant>::None`.
   #[inline]
   fn default() -> Self {
     Self::none()
   }
 }
+impl From<Option<Instant>> for AtomicOptionInstant {
+  #[inline]
+  fn from(instant: Option<Instant>) -> Self {
+    Self::new(instant)
+  }
+}
 
 impl AtomicOptionInstant {
-  /// Equivalent to atomic version `Option::<SystemTime>>::None`.
+  /// Equivalent to atomic version `Option::<Instant>::None`.
   ///
   /// # Examples
   ///
@@ -30,7 +43,7 @@ impl AtomicOptionInstant {
     Self(AtomicOptionDuration::new(None))
   }
 
-  /// Returns the system time corresponding to "now".
+  /// Returns the instant corresponding to "now".
   ///
   /// # Examples
   /// ```
@@ -42,7 +55,7 @@ impl AtomicOptionInstant {
     Self::new(Some(Instant::now()))
   }
 
-  /// Creates a new `AtomicInstant` with the given `SystemTime` value.
+  /// Creates a new `AtomicOptionInstant` with the given `Instant` value.
   pub fn new(instant: Option<Instant>) -> Self {
     Self(AtomicOptionDuration::new(
       instant.map(encode_instant_to_duration),
@@ -175,6 +188,15 @@ impl AtomicOptionInstant {
   #[inline]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
+  }
+
+  /// Consumes the atomic and returns the contained value.
+  ///
+  /// This is safe because passing `self` by value guarantees that no other threads are
+  /// concurrently accessing the atomic data.
+  #[inline]
+  pub fn into_inner(self) -> Option<Instant> {
+    self.0.into_inner().map(decode_instant_from_duration)
   }
 }
 
@@ -333,19 +355,17 @@ mod tests {
 
   #[cfg(feature = "serde")]
   #[test]
-  fn test_atomic_system_time_serde() {
-    use std::time::SystemTime;
-
+  fn test_atomic_option_instant_serde() {
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
     struct Test {
-      time: AtomicOptionSystemTime,
+      time: AtomicOptionInstant,
     }
 
-    let now = SystemTime::now();
+    let now = Instant::now();
     let test = Test {
-      time: AtomicOptionSystemTime::new(Some(now)),
+      time: AtomicOptionInstant::new(Some(now)),
     };
     let serialized = serde_json::to_string(&test).unwrap();
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();

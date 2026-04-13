@@ -6,8 +6,21 @@ use super::*;
 #[repr(transparent)]
 pub struct AtomicInstant(AtomicDuration);
 
+impl core::fmt::Debug for AtomicInstant {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_tuple("AtomicInstant")
+      .field(&self.load(Ordering::SeqCst))
+      .finish()
+  }
+}
+impl From<Instant> for AtomicInstant {
+  #[inline]
+  fn from(instant: Instant) -> Self {
+    Self::new(instant)
+  }
+}
 impl AtomicInstant {
-  /// Returns the system time corresponding to "now".
+  /// Returns the instant corresponding to "now".
   ///
   /// # Examples
   /// ```
@@ -19,7 +32,7 @@ impl AtomicInstant {
     Self::new(Instant::now())
   }
 
-  /// Creates a new `AtomicInstant` with the given `SystemTime` value.
+  /// Creates a new `AtomicInstant` with the given `Instant` value.
   pub fn new(instant: Instant) -> Self {
     Self(AtomicDuration::new(encode_instant_to_duration(instant)))
   }
@@ -145,6 +158,15 @@ impl AtomicInstant {
   #[inline]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
+  }
+
+  /// Consumes the atomic and returns the contained value.
+  ///
+  /// This is safe because passing `self` by value guarantees that no other threads are
+  /// concurrently accessing the atomic data.
+  #[inline]
+  pub fn into_inner(self) -> Instant {
+    decode_instant_from_duration(self.0.into_inner())
   }
 }
 
@@ -302,5 +324,21 @@ mod tests {
     let serialized = serde_json::to_string(&test).unwrap();
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized.time.load(Ordering::SeqCst), now);
+  }
+
+  #[test]
+  fn test_atomic_instant_past_value() {
+    use std::thread;
+
+    let past = Instant::now();
+    thread::sleep(Duration::from_millis(10));
+    let now = Instant::now();
+
+    // Store a past instant and verify roundtrip
+    let atomic = AtomicInstant::new(now);
+    atomic.store(past, Ordering::SeqCst);
+    let loaded = atomic.load(Ordering::SeqCst);
+    assert!(loaded < now);
+    assert_eq!(loaded, past);
   }
 }

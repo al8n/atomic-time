@@ -20,13 +20,15 @@ pub mod utils {
   use std::time::{Duration, Instant, SystemTime};
 
   #[cfg(feature = "std")]
-  fn init(now: Instant) -> (SystemTime, Instant) {
-    static ONCE: once_cell::sync::OnceCell<(SystemTime, Instant)> =
-      once_cell::sync::OnceCell::new();
+  fn init() -> (Duration, Instant) {
+    static ONCE: std::sync::OnceLock<(Duration, Instant)> = std::sync::OnceLock::new();
 
     *ONCE.get_or_init(|| {
-      let system_now = SystemTime::now();
-      (system_now, now)
+      let epoch_dur = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+      let instant_now = Instant::now();
+      (epoch_dur, instant_now)
     })
   }
 
@@ -34,11 +36,11 @@ pub mod utils {
   #[cfg(feature = "std")]
   #[inline]
   pub fn encode_instant_to_duration(instant: Instant) -> Duration {
-    let (system_now, instant_now) = init(instant);
+    let (epoch_dur, instant_now) = init();
     if instant <= instant_now {
-      system_now.duration_since(SystemTime::UNIX_EPOCH).unwrap() + (instant_now - instant)
+      epoch_dur - (instant_now - instant)
     } else {
-      system_now.duration_since(SystemTime::UNIX_EPOCH).unwrap() + (instant - instant_now)
+      epoch_dur + (instant - instant_now)
     }
   }
 
@@ -46,12 +48,11 @@ pub mod utils {
   #[cfg(feature = "std")]
   #[inline]
   pub fn decode_instant_from_duration(duration: Duration) -> Instant {
-    let (system_now, instant_now) = init(Instant::now());
-    let system_time = SystemTime::UNIX_EPOCH + duration;
-    if system_time >= system_now {
-      instant_now + system_time.duration_since(system_now).unwrap()
+    let (epoch_dur, instant_now) = init();
+    if duration >= epoch_dur {
+      instant_now + (duration - epoch_dur)
     } else {
-      instant_now - system_now.duration_since(system_time).unwrap()
+      instant_now - (epoch_dur - duration)
     }
   }
 
