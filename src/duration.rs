@@ -401,6 +401,7 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), expected_duration);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_atomic_duration_debug() {
     let duration = Duration::new(1, 500_000_000);

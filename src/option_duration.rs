@@ -493,6 +493,7 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), expected_duration);
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_atomic_option_duration_debug() {
     let atomic_duration = AtomicOptionDuration::new(Some(Duration::from_secs(1)));
@@ -500,6 +501,7 @@ mod tests {
     assert!(debug_str.contains("AtomicOptionDuration"));
   }
 
+  #[cfg(feature = "std")]
   #[test]
   fn test_atomic_option_duration_debug_none() {
     let atomic_duration = AtomicOptionDuration::none();
