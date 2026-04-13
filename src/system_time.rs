@@ -355,6 +355,48 @@ mod tests {
     assert!(atomic_time.load(Ordering::SeqCst) > SystemTime::now());
   }
 
+  #[test]
+  fn test_atomic_system_time_debug() {
+    let atomic_time = AtomicSystemTime::now();
+    let debug_str = format!("{:?}", atomic_time);
+    assert!(debug_str.contains("AtomicSystemTime"));
+  }
+
+  #[test]
+  fn test_atomic_system_time_from() {
+    let now = SystemTime::now();
+    let atomic_time = AtomicSystemTime::from(now);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), now);
+  }
+
+  #[test]
+  fn test_atomic_system_time_into_inner() {
+    let now = SystemTime::now();
+    let atomic_time = AtomicSystemTime::new(now);
+    assert_eq!(atomic_time.into_inner(), now);
+  }
+
+  #[test]
+  fn test_atomic_system_time_compare_exchange_failure() {
+    let now = SystemTime::now();
+    let other = now + Duration::from_secs(5);
+    let atomic_time = AtomicSystemTime::new(now);
+    let result = atomic_time.compare_exchange(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
+  #[test]
+  fn test_atomic_system_time_compare_exchange_weak_failure() {
+    let now = SystemTime::now();
+    let other = now + Duration::from_secs(5);
+    let atomic_time = AtomicSystemTime::new(now);
+    let result =
+      atomic_time.compare_exchange_weak(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_system_time_serde() {

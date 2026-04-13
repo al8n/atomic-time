@@ -307,6 +307,46 @@ mod tests {
     assert!(loaded_instant >= Instant::now() - Duration::from_millis(200));
   }
 
+  #[test]
+  fn test_atomic_instant_debug() {
+    let atomic_instant = AtomicInstant::now();
+    let debug_str = format!("{:?}", atomic_instant);
+    assert!(debug_str.contains("AtomicInstant"));
+  }
+
+  #[test]
+  fn test_atomic_instant_from() {
+    let now = Instant::now();
+    let atomic_instant = AtomicInstant::from(now);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), now);
+  }
+
+  #[test]
+  fn test_atomic_instant_into_inner() {
+    let now = Instant::now();
+    let atomic_instant = AtomicInstant::new(now);
+    assert_eq!(atomic_instant.into_inner(), now);
+  }
+
+  #[test]
+  fn test_atomic_instant_compare_exchange_failure() {
+    let now = Instant::now();
+    let other = now + Duration::from_secs(5);
+    let atomic_instant = AtomicInstant::new(now);
+    let result = atomic_instant.compare_exchange(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
+  #[test]
+  fn test_atomic_instant_fetch_update_failure() {
+    let now = Instant::now();
+    let atomic_instant = AtomicInstant::new(now);
+    let result = atomic_instant.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| None);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_instant_serde() {

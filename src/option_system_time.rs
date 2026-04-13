@@ -383,6 +383,74 @@ mod tests {
     }
   }
 
+  #[test]
+  fn test_atomic_option_system_time_debug() {
+    let atomic_time = AtomicOptionSystemTime::now();
+    let debug_str = format!("{:?}", atomic_time);
+    assert!(debug_str.contains("AtomicOptionSystemTime"));
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_default() {
+    let atomic_time = AtomicOptionSystemTime::default();
+    assert_eq!(atomic_time.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_from() {
+    let now = Some(SystemTime::now());
+    let atomic_time = AtomicOptionSystemTime::from(now);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), now);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_from_none() {
+    let atomic_time = AtomicOptionSystemTime::from(None);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_into_inner() {
+    let now = Some(SystemTime::now());
+    let atomic_time = AtomicOptionSystemTime::new(now);
+    assert_eq!(atomic_time.into_inner(), now);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_into_inner_none() {
+    let atomic_time = AtomicOptionSystemTime::none();
+    assert_eq!(atomic_time.into_inner(), None);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_compare_exchange_failure() {
+    let now = Some(SystemTime::now());
+    let other = now.map(|t| t + Duration::from_secs(5));
+    let atomic_time = AtomicOptionSystemTime::new(now);
+    let result = atomic_time.compare_exchange(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_compare_exchange_weak_failure() {
+    let now = Some(SystemTime::now());
+    let other = now.map(|t| t + Duration::from_secs(5));
+    let atomic_time = AtomicOptionSystemTime::new(now);
+    let result =
+      atomic_time.compare_exchange_weak(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_fetch_update_failure() {
+    let now = Some(SystemTime::now());
+    let atomic_time = AtomicOptionSystemTime::new(now);
+    let result = atomic_time.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| None);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_system_time_serde() {
