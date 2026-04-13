@@ -353,6 +353,74 @@ mod tests {
     }
   }
 
+  #[test]
+  fn test_atomic_option_instant_debug() {
+    let atomic_instant = AtomicOptionInstant::now();
+    let debug_str = format!("{:?}", atomic_instant);
+    assert!(debug_str.contains("AtomicOptionInstant"));
+  }
+
+  #[test]
+  fn test_atomic_option_instant_default() {
+    let atomic_instant = AtomicOptionInstant::default();
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_from() {
+    let now = Some(Instant::now());
+    let atomic_instant = AtomicOptionInstant::from(now);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), now);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_from_none() {
+    let atomic_instant = AtomicOptionInstant::from(None);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_into_inner() {
+    let now = Some(Instant::now());
+    let atomic_instant = AtomicOptionInstant::new(now);
+    assert_eq!(atomic_instant.into_inner(), now);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_into_inner_none() {
+    let atomic_instant = AtomicOptionInstant::none();
+    assert_eq!(atomic_instant.into_inner(), None);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_compare_exchange_failure() {
+    let now = Some(Instant::now());
+    let other = now.map(|t| t + Duration::from_secs(5));
+    let atomic_instant = AtomicOptionInstant::new(now);
+    let result = atomic_instant.compare_exchange(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
+  #[test]
+  fn test_atomic_option_instant_compare_exchange_weak_failure() {
+    let now = Some(Instant::now());
+    let other = now.map(|t| t + Duration::from_secs(5));
+    let atomic_instant = AtomicOptionInstant::new(now);
+    let result =
+      atomic_instant.compare_exchange_weak(other, other, Ordering::SeqCst, Ordering::SeqCst);
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_atomic_option_instant_fetch_update_failure() {
+    let now = Some(Instant::now());
+    let atomic_instant = AtomicOptionInstant::new(now);
+    let result = atomic_instant.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| None);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), now);
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_option_instant_serde() {

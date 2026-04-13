@@ -493,6 +493,73 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), expected_duration);
   }
 
+  #[cfg(feature = "std")]
+  #[test]
+  fn test_atomic_option_duration_debug() {
+    let atomic_duration = AtomicOptionDuration::new(Some(Duration::from_secs(1)));
+    let debug_str = format!("{:?}", atomic_duration);
+    assert!(debug_str.contains("AtomicOptionDuration"));
+  }
+
+  #[cfg(feature = "std")]
+  #[test]
+  fn test_atomic_option_duration_debug_none() {
+    let atomic_duration = AtomicOptionDuration::none();
+    let debug_str = format!("{:?}", atomic_duration);
+    assert!(debug_str.contains("AtomicOptionDuration"));
+  }
+
+  #[test]
+  fn test_atomic_option_duration_default() {
+    let atomic_duration = AtomicOptionDuration::default();
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_from() {
+    let duration = Some(Duration::from_secs(42));
+    let atomic_duration = AtomicOptionDuration::from(duration);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), duration);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_from_none() {
+    let atomic_duration = AtomicOptionDuration::from(None);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_into_inner() {
+    let duration = Some(Duration::from_secs(3));
+    let atomic_duration = AtomicOptionDuration::new(duration);
+    assert_eq!(atomic_duration.into_inner(), duration);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_into_inner_none() {
+    let atomic_duration = AtomicOptionDuration::none();
+    assert_eq!(atomic_duration.into_inner(), None);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_fetch_update() {
+    let initial = Some(Duration::from_secs(4));
+    let atomic_duration = AtomicOptionDuration::new(initial);
+
+    let result = atomic_duration.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |d| {
+      Some(d.map(|val| val + Duration::from_secs(2)))
+    });
+    assert_eq!(result, Ok(initial));
+    assert_eq!(
+      atomic_duration.load(Ordering::SeqCst),
+      Some(Duration::from_secs(6))
+    );
+
+    // fetch_update returning None should fail
+    let result = atomic_duration.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| None);
+    assert!(result.is_err());
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_option_duration_serde() {

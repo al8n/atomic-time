@@ -401,6 +401,28 @@ mod tests {
     assert_eq!(atomic_duration.load(Ordering::SeqCst), expected_duration);
   }
 
+  #[cfg(feature = "std")]
+  #[test]
+  fn test_atomic_duration_debug() {
+    let duration = Duration::new(1, 500_000_000);
+    let atomic_duration = AtomicDuration::new(duration);
+    let debug_str = format!("{:?}", atomic_duration);
+    assert!(debug_str.contains("AtomicDuration"));
+  }
+
+  #[test]
+  fn test_atomic_duration_default() {
+    let atomic_duration = AtomicDuration::default();
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), Duration::ZERO);
+  }
+
+  #[test]
+  fn test_atomic_duration_from() {
+    let duration = Duration::from_secs(42);
+    let atomic_duration = AtomicDuration::from(duration);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), duration);
+  }
+
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_duration_serde() {
