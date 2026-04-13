@@ -11,6 +11,19 @@ impl core::fmt::Debug for AtomicDuration {
       .finish()
   }
 }
+impl Default for AtomicDuration {
+  /// Creates an `AtomicDuration` initialized to [`Duration::ZERO`].
+  #[inline]
+  fn default() -> Self {
+    Self::new(Duration::ZERO)
+  }
+}
+impl From<Duration> for AtomicDuration {
+  #[inline]
+  fn from(duration: Duration) -> Self {
+    Self::new(duration)
+  }
+}
 impl AtomicDuration {
   /// Creates a new `AtomicDuration` with the given value.
   pub const fn new(duration: Duration) -> Self {

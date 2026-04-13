@@ -7,6 +7,22 @@ use crate::AtomicDuration;
 #[repr(transparent)]
 pub struct AtomicSystemTime(AtomicDuration);
 
+impl core::fmt::Debug for AtomicSystemTime {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_tuple("AtomicSystemTime")
+      .field(&self.load(Ordering::SeqCst))
+      .finish()
+  }
+}
+impl From<SystemTime> for AtomicSystemTime {
+  /// # Panics
+  ///
+  /// Panics if the given `SystemTime` value is earlier than [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
+  fn from(system_time: SystemTime) -> Self {
+    Self::new(system_time)
+  }
+}
 impl AtomicSystemTime {
   /// Returns the system time corresponding to "now".
   ///
@@ -180,6 +196,15 @@ impl AtomicSystemTime {
   #[inline]
   pub fn is_lock_free() -> bool {
     AtomicDuration::is_lock_free()
+  }
+
+  /// Consumes the atomic and returns the contained value.
+  ///
+  /// This is safe because passing `self` by value guarantees that no other threads are
+  /// concurrently accessing the atomic data.
+  #[inline]
+  pub fn into_inner(self) -> SystemTime {
+    SystemTime::UNIX_EPOCH + self.0.into_inner()
   }
 }
 

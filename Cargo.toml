@@ -1,14 +1,14 @@
 
 [package]
 name = "atomic-time"
-version = "0.1.6"
-edition = "2018"
+version = "0.2.0"
+edition = "2021"
 repository = "https://github.com/al8n/atomic-time"
 homepage = "https://github.com/al8n/atomic-time"
 documentation = "https://docs.rs/atomic-time"
-description = "`AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, `AtomicOptionSystemTime`, `AtomicInstant` and `AtomicOptionInstant` for Rust."
+description = "Lock-free, thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants"
 license = "MIT OR Apache-2.0"
-rust-version = "1.34.0"
+rust-version = "1.70.0"
 keywords = [
   "atomic",
   "no_std",
@@ -25,12 +25,10 @@ exclude = ["benchmark"]
 
 [features]
 default = ["std"]
-std = ["portable-atomic/std", "once_cell"]
+std = ["portable-atomic/std"]
 
 [dependencies]
 portable-atomic = "1"
-once_cell = { version = "1", optional = true }
-
 serde = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]

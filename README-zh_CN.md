@@ -3,7 +3,7 @@
 </div>
 <div align="center">
 
-`AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, `AtomicOptionSystemTime`, `AtomicInstant` and `AtomicOptionInstant` for Rust.
+Lock-free, thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants
 
 [<img alt="github" src="https://img.shields.io/badge/github-al8n/atomic--time-8da0cb?style=for-the-badge&logo=Github" height="22">][Github-url]
 [<img alt="Build" src="https://img.shields.io/github/actions/workflow/status/al8n/atomic-time/ci.yml?logo=Github-Actions&style=for-the-badge" height="22">][CI-url]
@@ -19,39 +19,117 @@
 
 </div>
 
-## Installation
+## 简介
+
+`atomic-time` 提供了 Rust 标准时间类型的无锁、线程安全的原子版本。所有类型底层使用 `AtomicU128`（通过 [`portable-atomic`](https://crates.io/crates/portable-atomic)），并暴露与标准 `std::sync::atomic` 类型相同的 API 模式（`load`、`store`、`swap`、`compare_exchange`、`compare_exchange_weak`、`fetch_update`）。
+
+### 类型
+
+| 类型 | 包装 | `no_std` |
+|------|------|----------|
+| `AtomicDuration` | `Duration` | 支持 |
+| `AtomicOptionDuration` | `Option<Duration>` | 支持 |
+| `AtomicSystemTime` | `SystemTime` | 不支持 |
+| `AtomicOptionSystemTime` | `Option<SystemTime>` | 不支持 |
+| `AtomicInstant` | `Instant` | 不支持 |
+| `AtomicOptionInstant` | `Option<Instant>` | 不支持 |
+
+## 安装
 
 ```toml
 [dependencies]
-atomic-time = "0.1"
+atomic-time = "0.2"
 ```
 
-## Test
+### Feature Flags
 
-- Rust test
+| Feature | 默认开启 | 说明 |
+|---------|---------|------|
+| `std` | 是 | 启用 `SystemTime` 和 `Instant` 类型 |
+| `serde` | 否 | 为所有类型启用 `Serialize`/`Deserialize` |
 
-  ```bash
-  cargo test
-  ```
+在 `no_std` 环境下使用（仅 `AtomicDuration` 和 `AtomicOptionDuration` 可用）：
 
-- `miri` test
-
-  ```bash
-  cargo miri test
-  ```
-
-## Benchmarks
-
-```bash
-cargo bench
+```toml
+[dependencies]
+atomic-time = { version = "0.2", default-features = false }
 ```
 
-#### License
+## 示例
 
-`atomic-time` is under the terms of both the MIT license and the
-Apache License (Version 2.0).
+```rust
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use atomic_time::AtomicDuration;
 
-See [LICENSE-APACHE](LICENSE-APACHE), [LICENSE-MIT](LICENSE-MIT) for details.
+let timeout = Arc::new(AtomicDuration::new(Duration::from_secs(30)));
+
+// 从另一个线程更新
+let timeout_clone = timeout.clone();
+std::thread::spawn(move || {
+    timeout_clone.store(Duration::from_secs(60), Ordering::Release);
+});
+```
+
+```rust
+use std::sync::atomic::Ordering;
+use std::time::Instant;
+use atomic_time::AtomicOptionInstant;
+
+// 追踪事件最后发生的时间
+let last_event = AtomicOptionInstant::none();
+assert_eq!(last_event.load(Ordering::Relaxed), None);
+
+last_event.store(Some(Instant::now()), Ordering::Release);
+assert!(last_event.load(Ordering::Acquire).is_some());
+```
+
+## 基准测试
+
+在 `benchmark/` 目录下运行 `cargo bench`。Apple M4 Pro。
+
+### Duration (`cargo bench --bench duration`)
+
+| 实现 | 单线程读取 | 单线程写入 | 读竞争 | 写竞争 |
+|---|---|---|---|---|
+| `AtomicDuration` | 1.32 ns | 0.99 ns | 1.34 ns | 6.86 ns |
+| `AtomicOptionDuration` | 1.25 ns | 1.24 ns | 1.29 ns | 5.75 ns |
+| `ArcSwap<Duration>` | 2.35 ns | 93.63 ns | 2.37 ns | 11.73 ns |
+| `parking_lot::RwLock` | 3.62 ns | 2.20 ns | 46.92 ns | 218.22 ns |
+| `std::sync::RwLock` | 4.74 ns | 2.36 ns | 436.14 ns | 118.22 ns |
+
+### Instant (`cargo bench --bench instant`)
+
+| 实现 | 单线程读取 | 单线程写入 | 读竞争 | 写竞争 |
+|---|---|---|---|---|
+| `AtomicInstant` | 2.99 ns | 3.99 ns | 3.12 ns | 14.82 ns |
+| `AtomicOptionInstant` | 3.30 ns | 4.23 ns | 3.59 ns | 16.97 ns |
+| `ArcSwap<Instant>` | 2.30 ns | 85.67 ns | 2.40 ns | 15.51 ns |
+| `parking_lot::RwLock` | 3.42 ns | 2.13 ns | 8.70 ns | 197.00 ns |
+| `std::sync::RwLock` | 4.54 ns | 2.32 ns | 482.79 ns | 90.49 ns |
+
+### SystemTime (`cargo bench --bench system_time`)
+
+| 实现 | 单线程读取 | 单线程写入 | 读竞争 | 写竞争 |
+|---|---|---|---|---|
+| `AtomicSystemTime` | 2.19 ns | 3.56 ns | 2.32 ns | 10.58 ns |
+| `AtomicOptionSystemTime` | 2.55 ns | 3.27 ns | 2.68 ns | 11.08 ns |
+| `ArcSwap<SystemTime>` | 2.30 ns | 88.93 ns | 2.41 ns | 17.49 ns |
+| `parking_lot::RwLock` | 3.47 ns | 2.13 ns | 31.16 ns | 235.82 ns |
+| `std::sync::RwLock` | 4.52 ns | 2.31 ns | 561.88 ns | 106.58 ns |
+
+> 竞争 = 4 个后台线程读取（读竞争）或写入（写竞争），主线程测量读取延迟。
+
+## MSRV
+
+最低支持的 Rust 版本为 **1.70.0**。
+
+## 许可证
+
+`atomic-time` 使用 MIT 许可证和 Apache 许可证（2.0 版本）双重授权。
+
+详情请参阅 [LICENSE-APACHE](LICENSE-APACHE)、[LICENSE-MIT](LICENSE-MIT)。
 
 Copyright (c) 2023 Al Liu.
 

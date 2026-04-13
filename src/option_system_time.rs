@@ -7,11 +7,27 @@ use crate::AtomicOptionDuration;
 #[repr(transparent)]
 pub struct AtomicOptionSystemTime(AtomicOptionDuration);
 
+impl core::fmt::Debug for AtomicOptionSystemTime {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    f.debug_tuple("AtomicOptionSystemTime")
+      .field(&self.load(Ordering::SeqCst))
+      .finish()
+  }
+}
 impl Default for AtomicOptionSystemTime {
-  /// Equivalent to `Option::<SystemTime>>::None`.
+  /// Equivalent to `Option::<SystemTime>::None`.
   #[inline]
   fn default() -> Self {
     Self::none()
+  }
+}
+impl From<Option<SystemTime>> for AtomicOptionSystemTime {
+  /// # Panics
+  ///
+  /// Panics if the given `SystemTime` value is earlier than [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
+  fn from(system_time: Option<SystemTime>) -> Self {
+    Self::new(system_time)
   }
 }
 
@@ -206,6 +222,15 @@ impl AtomicOptionSystemTime {
   #[inline]
   pub fn is_lock_free() -> bool {
     AtomicOptionDuration::is_lock_free()
+  }
+
+  /// Consumes the atomic and returns the contained value.
+  ///
+  /// This is safe because passing `self` by value guarantees that no other threads are
+  /// concurrently accessing the atomic data.
+  #[inline]
+  pub fn into_inner(self) -> Option<SystemTime> {
+    self.0.into_inner().map(|d| SystemTime::UNIX_EPOCH + d)
   }
 }
 
