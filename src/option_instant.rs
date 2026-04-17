@@ -448,4 +448,27 @@ mod tests {
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized.time.load(Ordering::SeqCst), Some(now));
   }
+
+  #[test]
+  fn decode_option_instant_from_extreme_duration_does_not_panic() {
+    let max_dur = Duration::new(u64::MAX, 999_999_999);
+    let decoded = crate::utils::decode_instant_from_duration(max_dur);
+    // Must not panic — the value saturates at `instant_now`.
+    let _ = decoded;
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn deserialize_extreme_option_instant_does_not_panic() {
+    // Simulates adversarial input through serde. The inner Duration
+    // is so large that decoding it into an Instant would overflow —
+    // the deserialized value must be `Ok(Some(_))`, not a panic.
+    let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
+    let result: Result<AtomicOptionInstant, _> = serde_json::from_str(json);
+    assert!(
+      result.is_ok(),
+      "deserialization of extreme Option<Instant> should not panic"
+    );
+    assert!(result.unwrap().load(Ordering::SeqCst).is_some());
+  }
 }

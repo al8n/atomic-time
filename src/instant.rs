@@ -402,4 +402,31 @@ mod tests {
     assert!(loaded < now);
     assert_eq!(loaded, past);
   }
+
+  #[test]
+  fn decode_instant_from_extreme_duration_does_not_panic() {
+    // Regression: `decode_instant_from_duration(Duration::MAX)` used to
+    // panic via `instant_now + huge_delta`. After the fix it saturates
+    // at `instant_now` (the closest representable Instant). The exact
+    // value is less important than the fact that no panic occurs — this
+    // path is hit by serde Deserialize, so a panic would crash the
+    // process on malformed/adversarial input.
+    let max_dur = Duration::new(u64::MAX, 999_999_999);
+    let decoded = crate::utils::decode_instant_from_duration(max_dur);
+    // Should be some valid Instant — we can't predict the exact value
+    // since it depends on when the process started, but it must not
+    // have panicked.
+    let _ = decoded;
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn deserialize_extreme_instant_does_not_panic() {
+    // Simulates adversarial input via serde. The Duration inside the
+    // JSON is so large that decoding it into an Instant would overflow
+    // — this must return an Ok (with a saturated value), not crash.
+    let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
+    let result: Result<AtomicInstant, _> = serde_json::from_str(json);
+    assert!(result.is_ok(), "deserialization of extreme Instant should not panic");
+  }
 }
