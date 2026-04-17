@@ -14,7 +14,7 @@ impl core::fmt::Debug for AtomicInstant {
   }
 }
 impl From<Instant> for AtomicInstant {
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(instant: Instant) -> Self {
     Self::new(instant)
   }
@@ -28,32 +28,38 @@ impl AtomicInstant {
   ///
   /// let now = AtomicInstant::now();
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn now() -> Self {
     Self::new(Instant::now())
   }
 
   /// Creates a new `AtomicInstant` with the given `Instant` value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn new(instant: Instant) -> Self {
     Self(AtomicDuration::new(encode_instant_to_duration(instant)))
   }
 
   /// Loads a value from the atomic instant.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, order: Ordering) -> Instant {
     decode_instant_from_duration(self.0.load(order))
   }
 
   /// Stores a value into the atomic instant.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, instant: Instant, order: Ordering) {
     self.0.store(encode_instant_to_duration(instant), order)
   }
 
   /// Stores a value into the atomic instant, returning the previous value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, instant: Instant, order: Ordering) -> Instant {
     decode_instant_from_duration(self.0.swap(encode_instant_to_duration(instant), order))
   }
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: Instant,
@@ -74,6 +80,7 @@ impl AtomicInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: Instant,
@@ -126,6 +133,7 @@ impl AtomicInstant {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + Duration::from_secs(1))), Ok(now + Duration::from_secs(1)));
   /// assert_eq!(x.load(Ordering::SeqCst), now + Duration::from_secs(2));
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -155,7 +163,7 @@ impl AtomicInstant {
   ///
   /// let is_lock_free = AtomicInstant::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
   }
@@ -164,7 +172,7 @@ impl AtomicInstant {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> Instant {
     decode_instant_from_duration(self.0.into_inner())
   }
@@ -285,15 +293,26 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_instant = Arc::new(AtomicInstant::now());
+    // Start from a fixed, known value so we can assert an *exact*
+    // final result. The previous version did `load + add + store`,
+    // which loses updates under contention (two threads load the
+    // same value, each writes load+50ms, only one write survives).
+    // Its assertion — "within 200 ms of now" — was satisfied even
+    // when 3 of 4 updates were dropped.
+    let start = Instant::now();
+    let atomic_instant = Arc::new(AtomicInstant::new(start));
     let mut handles = vec![];
 
     for _ in 0..4 {
       let atomic_clone = atomic_instant.clone();
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        let new = current + Duration::from_millis(50);
-        atomic_clone.store(new, Ordering::SeqCst);
+        // `fetch_update` retries on conflict, so every thread's
+        // increment is guaranteed to stick.
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            Some(current + Duration::from_millis(50))
+          })
+          .expect("closure never returns None");
       });
       handles.push(handle);
     }
@@ -302,9 +321,11 @@ mod tests {
       handle.join().unwrap();
     }
 
-    // Check that the instant has advanced by at least 50 milliseconds * 4 threads
-    let loaded_instant = atomic_instant.load(Ordering::SeqCst);
-    assert!(loaded_instant >= Instant::now() - Duration::from_millis(200));
+    // 4 threads × 50 ms = 200 ms, no lost updates.
+    assert_eq!(
+      atomic_instant.load(Ordering::SeqCst),
+      start + Duration::from_millis(200)
+    );
   }
 
   #[test]
@@ -380,5 +401,35 @@ mod tests {
     let loaded = atomic.load(Ordering::SeqCst);
     assert!(loaded < now);
     assert_eq!(loaded, past);
+  }
+
+  #[test]
+  fn decode_instant_from_extreme_duration_does_not_panic() {
+    // Regression: `decode_instant_from_duration(Duration::MAX)` used to
+    // panic via `instant_now + huge_delta`. After the fix it saturates
+    // at `instant_now` (the closest representable Instant). The exact
+    // value is less important than the fact that no panic occurs — this
+    // path is hit by serde Deserialize, so a panic would crash the
+    // process on malformed/adversarial input.
+    let max_dur = Duration::new(u64::MAX, 999_999_999);
+    let decoded = crate::utils::decode_instant_from_duration(max_dur);
+    // Should be some valid Instant — we can't predict the exact value
+    // since it depends on when the process started, but it must not
+    // have panicked.
+    let _ = decoded;
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn deserialize_extreme_instant_does_not_panic() {
+    // Simulates adversarial input via serde. The Duration inside the
+    // JSON is so large that decoding it into an Instant would overflow
+    // — this must return an Ok (with a saturated value), not crash.
+    let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
+    let result: Result<AtomicInstant, _> = serde_json::from_str(json);
+    assert!(
+      result.is_ok(),
+      "deserialization of extreme Instant should not panic"
+    );
   }
 }

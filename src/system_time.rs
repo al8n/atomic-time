@@ -14,15 +14,17 @@ impl core::fmt::Debug for AtomicSystemTime {
       .finish()
   }
 }
+
 impl From<SystemTime> for AtomicSystemTime {
   /// # Panics
   ///
   /// Panics if the given `SystemTime` value is earlier than [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(system_time: SystemTime) -> Self {
     Self::new(system_time)
   }
 }
+
 impl AtomicSystemTime {
   /// Returns the system time corresponding to "now".
   ///
@@ -32,6 +34,7 @@ impl AtomicSystemTime {
   ///
   /// let sys_time = AtomicSystemTime::now();
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn now() -> Self {
     Self::new(SystemTime::now())
   }
@@ -41,6 +44,7 @@ impl AtomicSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn new(system_time: SystemTime) -> Self {
     Self(AtomicDuration::new(
       system_time.duration_since(SystemTime::UNIX_EPOCH).unwrap(),
@@ -48,6 +52,7 @@ impl AtomicSystemTime {
   }
 
   /// Loads a value from the atomic system time.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, order: Ordering) -> SystemTime {
     SystemTime::UNIX_EPOCH + self.0.load(order)
   }
@@ -57,6 +62,7 @@ impl AtomicSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, system_time: SystemTime, order: Ordering) {
     self.0.store(
       system_time.duration_since(SystemTime::UNIX_EPOCH).unwrap(),
@@ -69,6 +75,7 @@ impl AtomicSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, system_time: SystemTime, order: Ordering) -> SystemTime {
     SystemTime::UNIX_EPOCH
       + self.0.swap(
@@ -83,6 +90,7 @@ impl AtomicSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: SystemTime,
@@ -107,6 +115,7 @@ impl AtomicSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: SystemTime,
@@ -163,6 +172,7 @@ impl AtomicSystemTime {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + Duration::from_secs(1))), Ok(now + Duration::from_secs(1)));
   /// assert_eq!(x.load(Ordering::SeqCst), now + Duration::from_secs(2));
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -193,7 +203,7 @@ impl AtomicSystemTime {
   ///
   /// let is_lock_free = AtomicSystemTime::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicDuration::is_lock_free()
   }
@@ -202,7 +212,7 @@ impl AtomicSystemTime {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> SystemTime {
     SystemTime::UNIX_EPOCH + self.0.into_inner()
   }
@@ -333,15 +343,23 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_time = Arc::new(AtomicSystemTime::now());
+    // Start from a fixed, known value so we can assert an *exact*
+    // final result. The previous version used `load + add + store`,
+    // which loses updates under contention, and asserted only that
+    // the final time was in the future — true even if every
+    // concurrent update was dropped.
+    let start = SystemTime::now();
+    let atomic_time = Arc::new(AtomicSystemTime::new(start));
     let mut handles = vec![];
 
     for _ in 0..4 {
       let atomic_clone = atomic_time.clone();
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        let new = current + Duration::from_secs(1);
-        atomic_clone.store(new, Ordering::SeqCst);
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            Some(current + Duration::from_secs(1))
+          })
+          .expect("closure never returns None");
       });
       handles.push(handle);
     }
@@ -350,9 +368,11 @@ mod tests {
       handle.join().unwrap();
     }
 
-    // This checks that the time has advanced, but it's not precise about how much,
-    // due to the non-deterministic nature of thread execution order and timing.
-    assert!(atomic_time.load(Ordering::SeqCst) > SystemTime::now());
+    // 4 threads × 1 second = 4 seconds, no lost updates.
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      start + Duration::from_secs(4)
+    );
   }
 
   #[test]

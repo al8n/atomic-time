@@ -15,13 +15,13 @@ impl core::fmt::Debug for AtomicOptionInstant {
 }
 impl Default for AtomicOptionInstant {
   /// Equivalent to `Option::<Instant>::None`.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::none()
   }
 }
 impl From<Option<Instant>> for AtomicOptionInstant {
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(instant: Option<Instant>) -> Self {
     Self::new(instant)
   }
@@ -38,7 +38,7 @@ impl AtomicOptionInstant {
   /// let none = AtomicOptionInstant::none();
   /// assert_eq!(none.load(std::sync::atomic::Ordering::SeqCst), None);
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn none() -> Self {
     Self(AtomicOptionDuration::new(None))
   }
@@ -51,11 +51,13 @@ impl AtomicOptionInstant {
   ///
   /// let now = AtomicOptionInstant::now();
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn now() -> Self {
     Self::new(Some(Instant::now()))
   }
 
   /// Creates a new `AtomicOptionInstant` with the given `Instant` value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn new(instant: Option<Instant>) -> Self {
     Self(AtomicOptionDuration::new(
       instant.map(encode_instant_to_duration),
@@ -63,16 +65,19 @@ impl AtomicOptionInstant {
   }
 
   /// Loads a value from the atomic instant.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, order: Ordering) -> Option<Instant> {
     self.0.load(order).map(decode_instant_from_duration)
   }
 
   /// Stores a value into the atomic instant.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, instant: Option<Instant>, order: Ordering) {
     self.0.store(instant.map(encode_instant_to_duration), order)
   }
 
   /// Stores a value into the atomic instant, returning the previous value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, instant: Option<Instant>, order: Ordering) -> Option<Instant> {
     self
       .0
@@ -82,6 +87,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: Option<Instant>,
@@ -102,6 +108,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: Option<Instant>,
@@ -155,6 +162,7 @@ impl AtomicOptionInstant {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(now + Duration::from_secs(2))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(now + Duration::from_secs(3)));
   /// ```
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -185,7 +193,7 @@ impl AtomicOptionInstant {
   ///
   /// let is_lock_free = AtomicOptionInstant::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
   }
@@ -194,7 +202,7 @@ impl AtomicOptionInstant {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> Option<Instant> {
     self.0.into_inner().map(decode_instant_from_duration)
   }
@@ -323,34 +331,35 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_time = Arc::new(AtomicOptionInstant::now());
+    // Fixed starting value + CAS loop = exact final result. The
+    // earlier implementation did `load + add + store` (not a CAS) and
+    // asserted "within 4 seconds of now", which even a single
+    // surviving write would satisfy.
+    let start = Instant::now();
+    let atomic_time = Arc::new(AtomicOptionInstant::new(Some(start)));
     let mut handles = vec![];
 
-    // Spawn multiple threads to update the time
     for _ in 0..4 {
       let atomic_clone = Arc::clone(&atomic_time);
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        if let Some(current_time) = current {
-          // Adding 1 second to the current time
-          let new_time = current_time + Duration::from_secs(1);
-          atomic_clone.store(Some(new_time), Ordering::SeqCst);
-        }
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            current.map(|t| Some(t + Duration::from_secs(1)))
+          })
+          .expect("atomic is always Some in this test");
       });
       handles.push(handle);
     }
 
-    // Wait for all threads to complete
     for handle in handles {
       handle.join().unwrap();
     }
 
-    // Verify that the time has been updated
-    if let Some(updated_time) = atomic_time.load(Ordering::SeqCst) {
-      assert!(updated_time > Instant::now() - Duration::from_secs(4));
-    } else {
-      panic!("AtomicOptionInstant should not be None");
-    }
+    // 4 threads × 1 second = 4 seconds, no lost updates.
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      Some(start + Duration::from_secs(4))
+    );
   }
 
   #[test]
@@ -438,5 +447,28 @@ mod tests {
     let serialized = serde_json::to_string(&test).unwrap();
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized.time.load(Ordering::SeqCst), Some(now));
+  }
+
+  #[test]
+  fn decode_option_instant_from_extreme_duration_does_not_panic() {
+    let max_dur = Duration::new(u64::MAX, 999_999_999);
+    let decoded = crate::utils::decode_instant_from_duration(max_dur);
+    // Must not panic — the value saturates at `instant_now`.
+    let _ = decoded;
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn deserialize_extreme_option_instant_does_not_panic() {
+    // Simulates adversarial input through serde. The inner Duration
+    // is so large that decoding it into an Instant would overflow —
+    // the deserialized value must be `Ok(Some(_))`, not a panic.
+    let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
+    let result: Result<AtomicOptionInstant, _> = serde_json::from_str(json);
+    assert!(
+      result.is_ok(),
+      "deserialization of extreme Option<Instant> should not panic"
+    );
+    assert!(result.unwrap().load(Ordering::SeqCst).is_some());
   }
 }

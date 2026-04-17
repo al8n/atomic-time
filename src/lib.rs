@@ -34,7 +34,8 @@ pub mod utils {
 
   /// Encode an [`Instant`] into a [`Duration`].
   #[cfg(feature = "std")]
-  #[inline]
+  #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn encode_instant_to_duration(instant: Instant) -> Duration {
     let (epoch_dur, instant_now) = init();
     if instant <= instant_now {
@@ -45,14 +46,30 @@ pub mod utils {
   }
 
   /// Decode an [`Instant`] from a [`Duration`].
+  ///
+  /// Accepts non-canonical input without panicking. If the encoded
+  /// Duration is so large that `instant_now + delta` would overflow
+  /// `Instant`'s internal representation, the result saturates at
+  /// `instant_now` rather than panicking. This is important because
+  /// the function sits on the serde deserialization path — a malformed
+  /// or adversarial encoded value must not crash the process.
   #[cfg(feature = "std")]
-  #[inline]
+  #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn decode_instant_from_duration(duration: Duration) -> Instant {
     let (epoch_dur, instant_now) = init();
     if duration >= epoch_dur {
-      instant_now + (duration - epoch_dur)
+      let delta = duration - epoch_dur;
+      // `Instant::checked_add` returns `None` when the result
+      // would overflow the platform's monotonic-clock range.
+      // Fall back to `instant_now` — the decoded Instant is
+      // "wrong" for such extreme inputs, but the alternative
+      // (panicking) propagates into serde `Deserialize` impls
+      // and crashes the caller.
+      instant_now.checked_add(delta).unwrap_or(instant_now)
     } else {
-      instant_now - (epoch_dur - duration)
+      let delta = epoch_dur - duration;
+      instant_now.checked_sub(delta).unwrap_or(instant_now)
     }
   }
 

@@ -4,33 +4,42 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime};
 
-fn main() {
-  let atomic_time = Arc::new(AtomicOptionSystemTime::now());
+fn run() {
+  let start = SystemTime::now();
+  let atomic_time = Arc::new(AtomicOptionSystemTime::new(Some(start)));
   let mut handles = vec![];
 
-  // Spawn multiple threads to update the time
   for _ in 0..4 {
     let atomic_clone = Arc::clone(&atomic_time);
     let handle = thread::spawn(move || {
-      let current = atomic_clone.load(Ordering::SeqCst);
-      if let Some(current_time) = current {
-        // Adding 1 second to the current time
-        let new_time = current_time + Duration::from_secs(1);
-        atomic_clone.store(Some(new_time), Ordering::SeqCst);
-      }
+      atomic_clone
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+          current.map(|t| Some(t + Duration::from_secs(1)))
+        })
+        .expect("atomic is always Some in this test");
     });
     handles.push(handle);
   }
 
-  // Wait for all threads to complete
   for handle in handles {
     handle.join().unwrap();
   }
 
-  // Verify that the time has been updated
-  if let Some(updated_time) = atomic_time.load(Ordering::SeqCst) {
-    assert!(updated_time > SystemTime::now() - Duration::from_secs(4));
-  } else {
-    panic!("AtomicOptionSystemTime should not be None");
+  assert_eq!(
+    atomic_time.load(Ordering::SeqCst),
+    Some(start + Duration::from_secs(4)),
+    "4 CAS increments of 1 second each should yield exactly start + 4s"
+  );
+}
+
+fn main() {
+  run();
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn atomic_option_system_time_cas_increments() {
+    super::run();
   }
 }
