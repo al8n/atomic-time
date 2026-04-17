@@ -55,6 +55,7 @@ impl AtomicOptionSystemTime {
   ///
   /// let sys_time = AtomicOptionSystemTime::now();
   /// ```
+  #[inline]
   pub fn now() -> Self {
     Self::new(Some(SystemTime::now()))
   }
@@ -64,6 +65,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
   pub fn new(system_time: Option<SystemTime>) -> Self {
     Self(AtomicOptionDuration::new(
       system_time.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
@@ -71,6 +73,7 @@ impl AtomicOptionSystemTime {
   }
 
   /// Loads a value from the atomic system time.
+  #[inline]
   pub fn load(&self, order: Ordering) -> Option<SystemTime> {
     self.0.load(order).map(|val| SystemTime::UNIX_EPOCH + val)
   }
@@ -80,6 +83,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
   pub fn store(&self, system_time: Option<SystemTime>, order: Ordering) {
     self.0.store(
       system_time.map(|val| val.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
@@ -92,6 +96,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
   pub fn swap(&self, system_time: Option<SystemTime>, order: Ordering) -> Option<SystemTime> {
     self
       .0
@@ -108,6 +113,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
   pub fn compare_exchange(
     &self,
     current: Option<SystemTime>,
@@ -132,6 +138,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  #[inline]
   pub fn compare_exchange_weak(
     &self,
     current: Option<SystemTime>,
@@ -189,6 +196,7 @@ impl AtomicOptionSystemTime {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(now + Duration::from_secs(2))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(now + Duration::from_secs(3)));
   /// ```
+  #[inline]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -353,34 +361,35 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_time = Arc::new(AtomicOptionSystemTime::now());
+    // Fixed starting value + CAS loop = exact final result. The
+    // earlier implementation did `load + add + store` and asserted
+    // only that the final time was "within 4 seconds of now" — a
+    // bound that holds even when every concurrent update was lost.
+    let start = SystemTime::now();
+    let atomic_time = Arc::new(AtomicOptionSystemTime::new(Some(start)));
     let mut handles = vec![];
 
-    // Spawn multiple threads to update the time
     for _ in 0..4 {
       let atomic_clone = Arc::clone(&atomic_time);
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        if let Some(current_time) = current {
-          // Adding 1 second to the current time
-          let new_time = current_time + Duration::from_secs(1);
-          atomic_clone.store(Some(new_time), Ordering::SeqCst);
-        }
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            current.map(|t| Some(t + Duration::from_secs(1)))
+          })
+          .expect("atomic is always Some in this test");
       });
       handles.push(handle);
     }
 
-    // Wait for all threads to complete
     for handle in handles {
       handle.join().unwrap();
     }
 
-    // Verify that the time has been updated
-    if let Some(updated_time) = atomic_time.load(Ordering::SeqCst) {
-      assert!(updated_time > SystemTime::now() - Duration::from_secs(4));
-    } else {
-      panic!("AtomicOptionSystemTime should not be None");
-    }
+    // 4 threads × 1 second = 4 seconds, no lost updates.
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      Some(start + Duration::from_secs(4))
+    );
   }
 
   #[test]

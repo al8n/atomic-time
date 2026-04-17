@@ -26,6 +26,7 @@ impl From<Duration> for AtomicDuration {
 }
 impl AtomicDuration {
   /// Creates a new `AtomicDuration` with the given value.
+  #[inline]
   pub const fn new(duration: Duration) -> Self {
     Self(AtomicU128::new(encode_duration(duration)))
   }
@@ -35,6 +36,7 @@ impl AtomicDuration {
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
+  #[inline]
   pub fn load(&self, ordering: Ordering) -> Duration {
     decode_duration(self.0.load(ordering))
   }
@@ -46,6 +48,7 @@ impl AtomicDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
+  #[inline]
   pub fn store(&self, val: Duration, ordering: Ordering) {
     self.0.store(encode_duration(val), ordering)
   }
@@ -53,6 +56,7 @@ impl AtomicDuration {
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
+  #[inline]
   pub fn swap(&self, val: Duration, ordering: Ordering) -> Duration {
     decode_duration(self.0.swap(encode_duration(val), ordering))
   }
@@ -72,6 +76,7 @@ impl AtomicDuration {
   /// success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
+  #[inline]
   pub fn compare_exchange_weak(
     &self,
     current: Duration,
@@ -104,6 +109,7 @@ impl AtomicDuration {
   /// [`AcqRel`](Ordering::AcqRel) and must be equivalent or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
+  #[inline]
   pub fn compare_exchange(
     &self,
     current: Duration,
@@ -154,6 +160,7 @@ impl AtomicDuration {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + Duration::from_secs(1))), Ok(Duration::from_secs(8)));
   /// assert_eq!(x.load(Ordering::SeqCst), Duration::from_secs(9));
   /// ```
+  #[inline]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -198,17 +205,41 @@ impl AtomicDuration {
 }
 
 /// Encodes a [`Duration`] into a [`u128`].
+#[inline]
 pub const fn encode_duration(duration: Duration) -> u128 {
   let seconds = duration.as_secs() as u128;
   let nanos = duration.subsec_nanos() as u128;
   (seconds << 32) + nanos
 }
 
-/// Decodes a [`u128`] from a [`Duration`].
+/// Decodes a [`u128`] into a [`Duration`].
+///
+/// Accepts non-canonical input without panicking. The encoding
+/// produced by [`encode_duration`] stores 64 bits of seconds in bits
+/// 32..=95 and at most 30 bits of nanoseconds (the valid range
+/// `0..1_000_000_000`) in bits 0..=31. If the decoded bits carry a
+/// nanosecond count of 10⁹ or more — which `encode_duration` never
+/// produces, but which can appear when the encoded value comes from
+/// corrupted storage or untrusted input — the extra whole seconds are
+/// folded into the seconds field; if that push past `u64::MAX`, the
+/// result saturates at [`Duration::MAX`].
+///
+/// This means `decode_duration(u128::MAX)` yields a saturated
+/// `Duration` rather than panicking as the previous implementation
+/// did.
+#[inline]
 pub const fn decode_duration(encoded: u128) -> Duration {
   let seconds = (encoded >> 32) as u64;
-  let nanos = (encoded & 0xFFFFFFFF) as u32;
-  Duration::new(seconds, nanos)
+  let raw_nanos = (encoded & 0xFFFFFFFF) as u32;
+  // Normalize out-of-range nanoseconds before calling `Duration::new`
+  // — the latter panics if the carry from nanos overflows the
+  // seconds field.
+  let extra_secs = (raw_nanos / 1_000_000_000) as u64;
+  let nanos = raw_nanos % 1_000_000_000;
+  match seconds.checked_add(extra_secs) {
+    Some(secs) => Duration::new(secs, nanos),
+    None => Duration::new(u64::MAX, 999_999_999),
+  }
 }
 
 #[cfg(feature = "serde")]
@@ -442,5 +473,33 @@ mod tests {
       deserialized.duration.load(Ordering::SeqCst),
       Duration::from_secs(5)
     );
+  }
+
+  #[test]
+  fn decode_duration_roundtrip() {
+    let cases = [
+      Duration::ZERO,
+      Duration::from_secs(1),
+      Duration::new(123_456_789, 999_999_999),
+      Duration::new(u64::MAX, 999_999_999),
+    ];
+    for d in cases {
+      assert_eq!(decode_duration(encode_duration(d)), d);
+    }
+  }
+
+  #[test]
+  fn decode_duration_saturates_on_non_canonical_input() {
+    // u128::MAX has nanos = u32::MAX (> 1e9) and seconds = u64::MAX,
+    // so the carry from normalising nanos overflows u64 — the old
+    // implementation panicked here.
+    let max = decode_duration(u128::MAX);
+    assert_eq!(max, Duration::new(u64::MAX, 999_999_999));
+
+    // A value with just out-of-range nanos (but within seconds budget):
+    // encode(0 secs, 2_000_000_000 nanos) — hand-crafted, not produced
+    // by encode_duration.
+    let d = decode_duration(2_000_000_000u128);
+    assert_eq!(d, Duration::new(2, 0));
   }
 }

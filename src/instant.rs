@@ -28,32 +28,38 @@ impl AtomicInstant {
   ///
   /// let now = AtomicInstant::now();
   /// ```
+  #[inline]
   pub fn now() -> Self {
     Self::new(Instant::now())
   }
 
   /// Creates a new `AtomicInstant` with the given `Instant` value.
+  #[inline]
   pub fn new(instant: Instant) -> Self {
     Self(AtomicDuration::new(encode_instant_to_duration(instant)))
   }
 
   /// Loads a value from the atomic instant.
+  #[inline]
   pub fn load(&self, order: Ordering) -> Instant {
     decode_instant_from_duration(self.0.load(order))
   }
 
   /// Stores a value into the atomic instant.
+  #[inline]
   pub fn store(&self, instant: Instant, order: Ordering) {
     self.0.store(encode_instant_to_duration(instant), order)
   }
 
   /// Stores a value into the atomic instant, returning the previous value.
+  #[inline]
   pub fn swap(&self, instant: Instant, order: Ordering) -> Instant {
     decode_instant_from_duration(self.0.swap(encode_instant_to_duration(instant), order))
   }
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[inline]
   pub fn compare_exchange(
     &self,
     current: Instant,
@@ -74,6 +80,7 @@ impl AtomicInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[inline]
   pub fn compare_exchange_weak(
     &self,
     current: Instant,
@@ -126,6 +133,7 @@ impl AtomicInstant {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + Duration::from_secs(1))), Ok(now + Duration::from_secs(1)));
   /// assert_eq!(x.load(Ordering::SeqCst), now + Duration::from_secs(2));
   /// ```
+  #[inline]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -285,15 +293,26 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_instant = Arc::new(AtomicInstant::now());
+    // Start from a fixed, known value so we can assert an *exact*
+    // final result. The previous version did `load + add + store`,
+    // which loses updates under contention (two threads load the
+    // same value, each writes load+50ms, only one write survives).
+    // Its assertion — "within 200 ms of now" — was satisfied even
+    // when 3 of 4 updates were dropped.
+    let start = Instant::now();
+    let atomic_instant = Arc::new(AtomicInstant::new(start));
     let mut handles = vec![];
 
     for _ in 0..4 {
       let atomic_clone = atomic_instant.clone();
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        let new = current + Duration::from_millis(50);
-        atomic_clone.store(new, Ordering::SeqCst);
+        // `fetch_update` retries on conflict, so every thread's
+        // increment is guaranteed to stick.
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            Some(current + Duration::from_millis(50))
+          })
+          .expect("closure never returns None");
       });
       handles.push(handle);
     }
@@ -302,9 +321,11 @@ mod tests {
       handle.join().unwrap();
     }
 
-    // Check that the instant has advanced by at least 50 milliseconds * 4 threads
-    let loaded_instant = atomic_instant.load(Ordering::SeqCst);
-    assert!(loaded_instant >= Instant::now() - Duration::from_millis(200));
+    // 4 threads × 50 ms = 200 ms, no lost updates.
+    assert_eq!(
+      atomic_instant.load(Ordering::SeqCst),
+      start + Duration::from_millis(200)
+    );
   }
 
   #[test]

@@ -51,11 +51,13 @@ impl AtomicOptionInstant {
   ///
   /// let now = AtomicOptionInstant::now();
   /// ```
+  #[inline]
   pub fn now() -> Self {
     Self::new(Some(Instant::now()))
   }
 
   /// Creates a new `AtomicOptionInstant` with the given `Instant` value.
+  #[inline]
   pub fn new(instant: Option<Instant>) -> Self {
     Self(AtomicOptionDuration::new(
       instant.map(encode_instant_to_duration),
@@ -63,16 +65,19 @@ impl AtomicOptionInstant {
   }
 
   /// Loads a value from the atomic instant.
+  #[inline]
   pub fn load(&self, order: Ordering) -> Option<Instant> {
     self.0.load(order).map(decode_instant_from_duration)
   }
 
   /// Stores a value into the atomic instant.
+  #[inline]
   pub fn store(&self, instant: Option<Instant>, order: Ordering) {
     self.0.store(instant.map(encode_instant_to_duration), order)
   }
 
   /// Stores a value into the atomic instant, returning the previous value.
+  #[inline]
   pub fn swap(&self, instant: Option<Instant>, order: Ordering) -> Option<Instant> {
     self
       .0
@@ -82,6 +87,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[inline]
   pub fn compare_exchange(
     &self,
     current: Option<Instant>,
@@ -102,6 +108,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
+  #[inline]
   pub fn compare_exchange_weak(
     &self,
     current: Option<Instant>,
@@ -155,6 +162,7 @@ impl AtomicOptionInstant {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(now + Duration::from_secs(2))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(now + Duration::from_secs(3)));
   /// ```
+  #[inline]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -323,34 +331,35 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
-    let atomic_time = Arc::new(AtomicOptionInstant::now());
+    // Fixed starting value + CAS loop = exact final result. The
+    // earlier implementation did `load + add + store` (not a CAS) and
+    // asserted "within 4 seconds of now", which even a single
+    // surviving write would satisfy.
+    let start = Instant::now();
+    let atomic_time = Arc::new(AtomicOptionInstant::new(Some(start)));
     let mut handles = vec![];
 
-    // Spawn multiple threads to update the time
     for _ in 0..4 {
       let atomic_clone = Arc::clone(&atomic_time);
       let handle = thread::spawn(move || {
-        let current = atomic_clone.load(Ordering::SeqCst);
-        if let Some(current_time) = current {
-          // Adding 1 second to the current time
-          let new_time = current_time + Duration::from_secs(1);
-          atomic_clone.store(Some(new_time), Ordering::SeqCst);
-        }
+        atomic_clone
+          .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            current.map(|t| Some(t + Duration::from_secs(1)))
+          })
+          .expect("atomic is always Some in this test");
       });
       handles.push(handle);
     }
 
-    // Wait for all threads to complete
     for handle in handles {
       handle.join().unwrap();
     }
 
-    // Verify that the time has been updated
-    if let Some(updated_time) = atomic_time.load(Ordering::SeqCst) {
-      assert!(updated_time > Instant::now() - Duration::from_secs(4));
-    } else {
-      panic!("AtomicOptionInstant should not be None");
-    }
+    // 4 threads × 1 second = 4 seconds, no lost updates.
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      Some(start + Duration::from_secs(4))
+    );
   }
 
   #[test]

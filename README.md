@@ -91,35 +91,35 @@ Run with `cargo bench` in the `benchmark/` directory. Apple M4 Pro.
 
 ### Duration (`cargo bench --bench duration`)
 
-| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
-|---|---|---|---|---|
-| `AtomicDuration` | 1.32 ns | 0.99 ns | 1.34 ns | 6.86 ns |
-| `AtomicOptionDuration` | 1.25 ns | 1.24 ns | 1.29 ns | 5.75 ns |
-| `ArcSwap<Duration>` | 2.35 ns | 93.63 ns | 2.37 ns | 11.73 ns |
-| `parking_lot::RwLock` | 3.62 ns | 2.20 ns | 46.92 ns | 218.22 ns |
-| `std::sync::RwLock` | 4.74 ns | 2.36 ns | 436.14 ns | 118.22 ns |
+| Implementation | Single-thread load | Single-thread store | Contended read | Load under write contention | Contended store |
+|---|---|---|---|---|---|
+| `AtomicDuration` | 1.04 ns | 0.72 ns | 1.08 ns | 4.44 ns | 10.7 ns |
+| `AtomicOptionDuration` | 1.16 ns | 0.74 ns | 1.20 ns | 4.73 ns | 14.5 ns |
+| `ArcSwap<Duration>` | 2.30 ns | 86.5 ns | 2.38 ns | 15.5 ns | 1,400 ns |
+| `parking_lot::RwLock` | 3.40 ns | 2.09 ns | 9.3 ns | 241.8 ns | 37.7 ns |
+| `std::sync::RwLock` | 4.44 ns | 2.26 ns | 411.2 ns | 89.0 ns | 36.8 ns |
 
 ### Instant (`cargo bench --bench instant`)
 
-| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
-|---|---|---|---|---|
-| `AtomicInstant` | 2.99 ns | 3.99 ns | 3.12 ns | 14.82 ns |
-| `AtomicOptionInstant` | 3.30 ns | 4.23 ns | 3.59 ns | 16.97 ns |
-| `ArcSwap<Instant>` | 2.30 ns | 85.67 ns | 2.40 ns | 15.51 ns |
-| `parking_lot::RwLock` | 3.42 ns | 2.13 ns | 8.70 ns | 197.00 ns |
-| `std::sync::RwLock` | 4.54 ns | 2.32 ns | 482.79 ns | 90.49 ns |
+| Implementation | Single-thread load | Single-thread store | Contended read | Load under write contention | Contended store |
+|---|---|---|---|---|---|
+| `AtomicInstant` | 2.16 ns | 3.52 ns | 2.17 ns | 14.97 ns | 22.7 ns |
+| `AtomicOptionInstant` | 2.36 ns | 3.51 ns | 2.40 ns | 17.63 ns | 21.2 ns |
+| `ArcSwap<Instant>` | 2.95 ns | 74.9 ns | 2.92 ns | 17.53 ns | 972 ns |
+| `parking_lot::RwLock` | 3.43 ns | 2.10 ns | 81.3 ns | 213.9 ns | 26.9 ns |
+| `std::sync::RwLock` | 4.48 ns | 2.28 ns | 422.3 ns | 87.7 ns | 76.9 ns |
 
 ### SystemTime (`cargo bench --bench system_time`)
 
-| Implementation | Single-thread load | Single-thread store | Contended read | Contended write |
-|---|---|---|---|---|
-| `AtomicSystemTime` | 2.19 ns | 3.56 ns | 2.32 ns | 10.58 ns |
-| `AtomicOptionSystemTime` | 2.55 ns | 3.27 ns | 2.68 ns | 11.08 ns |
-| `ArcSwap<SystemTime>` | 2.30 ns | 88.93 ns | 2.41 ns | 17.49 ns |
-| `parking_lot::RwLock` | 3.47 ns | 2.13 ns | 31.16 ns | 235.82 ns |
-| `std::sync::RwLock` | 4.52 ns | 2.31 ns | 561.88 ns | 106.58 ns |
+| Implementation | Single-thread load | Single-thread store | Contended read | Load under write contention | Contended store |
+|---|---|---|---|---|---|
+| `AtomicSystemTime` | 1.26 ns | 3.41 ns | 1.28 ns | 8.89 ns | 27.1 ns |
+| `AtomicOptionSystemTime` | 1.25 ns | 3.47 ns | 1.30 ns | 9.17 ns | 25.2 ns |
+| `ArcSwap<SystemTime>` | 2.29 ns | 83.7 ns | 2.39 ns | 16.4 ns | 1,227 ns |
+| `parking_lot::RwLock` | 3.50 ns | 2.13 ns | 22.0 ns | 204.5 ns | 31.0 ns |
+| `std::sync::RwLock` | 4.69 ns | 2.31 ns | 554.2 ns | 84.4 ns | 38.7 ns |
 
-> Contended = 4 background threads reading (contended read) or writing (contended write), load measured on main thread.
+> **Contended read** = 4 background threads also reading; **Load under write contention** = 4 background threads writing, load measured on main thread; **Contended store** = 4 background threads writing, store measured on main thread. All numbers from Apple M4 Pro.
 
 ## MSRV
 

@@ -4,16 +4,19 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-fn main() {
-  let atomic_time = Arc::new(AtomicInstant::now());
+fn run() {
+  let start = Instant::now();
+  let atomic_time = Arc::new(AtomicInstant::new(start));
   let mut handles = vec![];
 
   for _ in 0..4 {
     let atomic_clone = atomic_time.clone();
     let handle = thread::spawn(move || {
-      let current = atomic_clone.load(Ordering::SeqCst);
-      let new = current + Duration::from_secs(1);
-      atomic_clone.store(new, Ordering::SeqCst);
+      atomic_clone
+        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+          Some(current + Duration::from_secs(1))
+        })
+        .unwrap();
     });
     handles.push(handle);
   }
@@ -22,7 +25,21 @@ fn main() {
     handle.join().unwrap();
   }
 
-  // This checks that the time has advanced, but it's not precise about how much,
-  // due to the non-deterministic nature of thread execution order and timing.
-  assert!(atomic_time.load(Ordering::SeqCst) > Instant::now());
+  assert_eq!(
+    atomic_time.load(Ordering::SeqCst),
+    start + Duration::from_secs(4),
+    "4 CAS increments of 1 second each should yield exactly start + 4s"
+  );
+}
+
+fn main() {
+  run();
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn atomic_instant_cas_increments() {
+    super::run();
+  }
 }

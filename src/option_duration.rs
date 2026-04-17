@@ -26,11 +26,13 @@ impl From<Option<Duration>> for AtomicOptionDuration {
 }
 impl AtomicOptionDuration {
   /// Creates a new `AtomicOptionDuration` with `None`.
+  #[inline]
   pub const fn none() -> Self {
     Self(AtomicU128::new(encode_option_duration(None)))
   }
 
   /// Creates a new `AtomicOptionDuration` with the given value.
+  #[inline]
   pub const fn new(duration: Option<Duration>) -> Self {
     Self(AtomicU128::new(encode_option_duration(duration)))
   }
@@ -40,6 +42,7 @@ impl AtomicOptionDuration {
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
+  #[inline]
   pub fn load(&self, ordering: Ordering) -> Option<Duration> {
     decode_option_duration(self.0.load(ordering))
   }
@@ -51,6 +54,7 @@ impl AtomicOptionDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
+  #[inline]
   pub fn store(&self, val: Option<Duration>, ordering: Ordering) {
     self.0.store(encode_option_duration(val), ordering)
   }
@@ -58,6 +62,7 @@ impl AtomicOptionDuration {
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
+  #[inline]
   pub fn swap(&self, val: Option<Duration>, ordering: Ordering) -> Option<Duration> {
     decode_option_duration(self.0.swap(encode_option_duration(val), ordering))
   }
@@ -77,6 +82,7 @@ impl AtomicOptionDuration {
   /// success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
+  #[inline]
   pub fn compare_exchange_weak(
     &self,
     current: Option<Duration>,
@@ -109,6 +115,7 @@ impl AtomicOptionDuration {
   /// [`AcqRel`](Ordering::AcqRel) and must be equivalent or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
+  #[inline]
   pub fn compare_exchange(
     &self,
     current: Option<Duration>,
@@ -159,6 +166,7 @@ impl AtomicOptionDuration {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(Duration::from_secs(8))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(Duration::from_secs(9)));
   /// ```
+  #[inline]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -203,6 +211,7 @@ impl AtomicOptionDuration {
 }
 
 /// Encode an [`Option<Duration>`] into an [`u128`].
+#[inline]
 pub const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
   match option_duration {
     Some(duration) => {
@@ -215,13 +224,33 @@ pub const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
 }
 
 /// Decode an [`Option<Duration>`] from an encoded [`u128`].
+///
+/// Accepts non-canonical input without panicking. The `Some(_)`
+/// encoding stores 64 bits of seconds in bits 32..=95 and up to 30
+/// bits of nanoseconds in bits 0..=31 (bit 127 is the Some/None
+/// discriminant, bits 96..=126 are unused). If the decoded nanosecond
+/// count is 10⁹ or more — which `encode_option_duration` never
+/// produces, but which can appear when the encoded value comes from
+/// corrupted storage or untrusted input — the extra whole seconds are
+/// folded into the seconds field; if that push past `u64::MAX`, the
+/// result saturates at [`Duration::MAX`].
+///
+/// This means `decode_option_duration(u128::MAX)` yields
+/// `Some(Duration::MAX)` rather than panicking as the previous
+/// implementation did.
+#[inline]
 pub const fn decode_option_duration(encoded: u128) -> Option<Duration> {
   if encoded >> 127 == 0 {
     None
   } else {
     let seconds = ((encoded << 1) >> 33) as u64;
-    let nanos = (encoded & 0xFFFFFFFF) as u32;
-    Some(Duration::new(seconds, nanos))
+    let raw_nanos = (encoded & 0xFFFFFFFF) as u32;
+    let extra_secs = (raw_nanos / 1_000_000_000) as u64;
+    let nanos = raw_nanos % 1_000_000_000;
+    Some(match seconds.checked_add(extra_secs) {
+      Some(secs) => Duration::new(secs, nanos),
+      None => Duration::new(u64::MAX, 999_999_999),
+    })
   }
 }
 
@@ -586,5 +615,34 @@ mod tests {
     let serialized = serde_json::to_string(&test).unwrap();
     let deserialized: Test = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized.duration.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn decode_option_duration_roundtrip() {
+    let cases: [Option<Duration>; 4] = [
+      None,
+      Some(Duration::ZERO),
+      Some(Duration::from_secs(1)),
+      Some(Duration::new(123_456_789, 999_999_999)),
+    ];
+    for d in cases {
+      assert_eq!(decode_option_duration(encode_option_duration(d)), d);
+    }
+  }
+
+  #[test]
+  fn decode_option_duration_saturates_on_non_canonical_input() {
+    // u128::MAX has bit 127 set (= Some), nanos = u32::MAX (> 1e9),
+    // and the extracted seconds = u64::MAX. The old implementation
+    // panicked; the new one saturates.
+    let max = decode_option_duration(u128::MAX);
+    assert_eq!(max, Some(Duration::new(u64::MAX, 999_999_999)));
+
+    // Zero is the None sentinel — verify it stays None even when all
+    // lower bits are clear.
+    assert_eq!(decode_option_duration(0), None);
+
+    // Bit 127 alone = Some with seconds=0, nanos=0.
+    assert_eq!(decode_option_duration(1u128 << 127), Some(Duration::ZERO));
   }
 }

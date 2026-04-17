@@ -111,8 +111,12 @@ fn contended_read(c: &mut Criterion) {
   g.finish();
 }
 
-fn contended_write(c: &mut Criterion) {
-  let mut g = c.benchmark_group("system_time/contended_write");
+// NOTE: this group was previously called `contended_write`, but it
+// actually measures *load* latency on the main thread while background
+// threads perform writes. Renamed to `load_under_write_contention` so
+// the benchmark ID matches the measured operation.
+fn load_under_write_contention(c: &mut Criterion) {
+  let mut g = c.benchmark_group("system_time/load_under_write_contention");
 
   let now = SystemTime::now();
   let next = now + Duration::from_secs(1);
@@ -168,5 +172,82 @@ fn contended_write(c: &mut Criterion) {
   g.finish();
 }
 
-criterion_group!(benches, single_thread, contended_read, contended_write);
+// Real write-side benchmark: measures store/swap latency on the main
+// thread while background threads also write.
+fn contended_store(c: &mut Criterion) {
+  let mut g = c.benchmark_group("system_time/contended_store");
+
+  let now = SystemTime::now();
+  let next = now + Duration::from_secs(1);
+
+  let v = Arc::new(AtomicSystemTime::new(now));
+  let (stop, handles) = bg_threads(THREADS, {
+    let v = v.clone();
+    move || { v.store(next, Ordering::Release); }
+  });
+  g.bench_function("AtomicSystemTime/store", |b| {
+    b.iter(|| v.store(black_box(next), Ordering::Release))
+  });
+  join_all(stop, handles);
+
+  let v = Arc::new(AtomicSystemTime::new(now));
+  let (stop, handles) = bg_threads(THREADS, {
+    let v = v.clone();
+    move || { v.store(next, Ordering::Release); }
+  });
+  g.bench_function("AtomicSystemTime/swap", |b| {
+    b.iter(|| black_box(v.swap(black_box(next), Ordering::AcqRel)))
+  });
+  join_all(stop, handles);
+
+  let v = Arc::new(AtomicOptionSystemTime::new(Some(now)));
+  let (stop, handles) = bg_threads(THREADS, {
+    let v = v.clone();
+    move || { v.store(Some(next), Ordering::Release); }
+  });
+  g.bench_function("AtomicOptionSystemTime/store", |b| {
+    b.iter(|| v.store(black_box(Some(next)), Ordering::Release))
+  });
+  join_all(stop, handles);
+
+  let sw = Arc::new(ArcSwap::new(Arc::new(now)));
+  let (stop, handles) = bg_threads(THREADS, {
+    let sw = sw.clone();
+    move || { sw.store(Arc::new(next)); }
+  });
+  g.bench_function("ArcSwap/store", |b| {
+    b.iter(|| sw.store(Arc::new(black_box(next))))
+  });
+  join_all(stop, handles);
+
+  let pl = Arc::new(parking_lot::RwLock::new(now));
+  let (stop, handles) = bg_threads(THREADS, {
+    let pl = pl.clone();
+    move || { *pl.write() = next; }
+  });
+  g.bench_function("parking_lot::RwLock/write", |b| {
+    b.iter(|| *pl.write() = black_box(next))
+  });
+  join_all(stop, handles);
+
+  let sr = Arc::new(std::sync::RwLock::new(now));
+  let (stop, handles) = bg_threads(THREADS, {
+    let sr = sr.clone();
+    move || { *sr.write().unwrap() = next; }
+  });
+  g.bench_function("std::sync::RwLock/write", |b| {
+    b.iter(|| *sr.write().unwrap() = black_box(next))
+  });
+  join_all(stop, handles);
+
+  g.finish();
+}
+
+criterion_group!(
+  benches,
+  single_thread,
+  contended_read,
+  load_under_write_contention,
+  contended_store
+);
 criterion_main!(benches);
