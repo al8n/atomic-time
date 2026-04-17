@@ -427,6 +427,9 @@ mod tests {
     // — this must return an Ok (with a saturated value), not crash.
     let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
     let result: Result<AtomicInstant, _> = serde_json::from_str(json);
-    assert!(result.is_ok(), "deserialization of extreme Instant should not panic");
+    assert!(
+      result.is_ok(),
+      "deserialization of extreme Instant should not panic"
+    );
   }
 }
