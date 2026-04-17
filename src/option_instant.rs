@@ -15,13 +15,13 @@ impl core::fmt::Debug for AtomicOptionInstant {
 }
 impl Default for AtomicOptionInstant {
   /// Equivalent to `Option::<Instant>::None`.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::none()
   }
 }
 impl From<Option<Instant>> for AtomicOptionInstant {
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(instant: Option<Instant>) -> Self {
     Self::new(instant)
   }
@@ -38,7 +38,7 @@ impl AtomicOptionInstant {
   /// let none = AtomicOptionInstant::none();
   /// assert_eq!(none.load(std::sync::atomic::Ordering::SeqCst), None);
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn none() -> Self {
     Self(AtomicOptionDuration::new(None))
   }
@@ -51,13 +51,13 @@ impl AtomicOptionInstant {
   ///
   /// let now = AtomicOptionInstant::now();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn now() -> Self {
     Self::new(Some(Instant::now()))
   }
 
   /// Creates a new `AtomicOptionInstant` with the given `Instant` value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn new(instant: Option<Instant>) -> Self {
     Self(AtomicOptionDuration::new(
       instant.map(encode_instant_to_duration),
@@ -65,19 +65,19 @@ impl AtomicOptionInstant {
   }
 
   /// Loads a value from the atomic instant.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, order: Ordering) -> Option<Instant> {
     self.0.load(order).map(decode_instant_from_duration)
   }
 
   /// Stores a value into the atomic instant.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, instant: Option<Instant>, order: Ordering) {
     self.0.store(instant.map(encode_instant_to_duration), order)
   }
 
   /// Stores a value into the atomic instant, returning the previous value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, instant: Option<Instant>, order: Ordering) -> Option<Instant> {
     self
       .0
@@ -87,7 +87,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: Option<Instant>,
@@ -108,7 +108,7 @@ impl AtomicOptionInstant {
 
   /// Stores a value into the atomic instant if the current value is the same as the `current`
   /// value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: Option<Instant>,
@@ -162,7 +162,7 @@ impl AtomicOptionInstant {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(now + Duration::from_secs(2))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(now + Duration::from_secs(3)));
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -193,7 +193,7 @@ impl AtomicOptionInstant {
   ///
   /// let is_lock_free = AtomicOptionInstant::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
   }
@@ -202,7 +202,7 @@ impl AtomicOptionInstant {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> Option<Instant> {
     self.0.into_inner().map(decode_instant_from_duration)
   }

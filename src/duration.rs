@@ -13,20 +13,20 @@ impl core::fmt::Debug for AtomicDuration {
 }
 impl Default for AtomicDuration {
   /// Creates an `AtomicDuration` initialized to [`Duration::ZERO`].
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::new(Duration::ZERO)
   }
 }
 impl From<Duration> for AtomicDuration {
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(duration: Duration) -> Self {
     Self::new(duration)
   }
 }
 impl AtomicDuration {
   /// Creates a new `AtomicDuration` with the given value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn new(duration: Duration) -> Self {
     Self(AtomicU128::new(encode_duration(duration)))
   }
@@ -36,7 +36,7 @@ impl AtomicDuration {
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, ordering: Ordering) -> Duration {
     decode_duration(self.0.load(ordering))
   }
@@ -48,7 +48,7 @@ impl AtomicDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, val: Duration, ordering: Ordering) {
     self.0.store(encode_duration(val), ordering)
   }
@@ -56,7 +56,7 @@ impl AtomicDuration {
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, val: Duration, ordering: Ordering) -> Duration {
     decode_duration(self.0.swap(encode_duration(val), ordering))
   }
@@ -76,7 +76,7 @@ impl AtomicDuration {
   /// success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: Duration,
@@ -109,7 +109,7 @@ impl AtomicDuration {
   /// [`AcqRel`](Ordering::AcqRel) and must be equivalent or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: Duration,
@@ -160,7 +160,7 @@ impl AtomicDuration {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x + Duration::from_secs(1))), Ok(Duration::from_secs(8)));
   /// assert_eq!(x.load(Ordering::SeqCst), Duration::from_secs(9));
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -182,7 +182,7 @@ impl AtomicDuration {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> Duration {
     decode_duration(self.0.into_inner())
   }
@@ -198,14 +198,14 @@ impl AtomicDuration {
   ///
   /// let is_lock_free = AtomicDuration::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
   }
 }
 
 /// Encodes a [`Duration`] into a [`u128`].
-#[inline]
+#[cfg_attr(not(tarpaulin), inline(always))]
 pub const fn encode_duration(duration: Duration) -> u128 {
   let seconds = duration.as_secs() as u128;
   let nanos = duration.subsec_nanos() as u128;
@@ -227,7 +227,7 @@ pub const fn encode_duration(duration: Duration) -> u128 {
 /// This means `decode_duration(u128::MAX)` yields a saturated
 /// `Duration` rather than panicking as the previous implementation
 /// did.
-#[inline]
+#[cfg_attr(not(tarpaulin), inline(always))]
 pub const fn decode_duration(encoded: u128) -> Duration {
   let seconds = (encoded >> 32) as u64;
   let raw_nanos = (encoded & 0xFFFFFFFF) as u32;

@@ -13,26 +13,26 @@ impl core::fmt::Debug for AtomicOptionDuration {
 }
 impl Default for AtomicOptionDuration {
   /// Creates an `AtomicOptionDuration` initialized to `None`.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn default() -> Self {
     Self::none()
   }
 }
 impl From<Option<Duration>> for AtomicOptionDuration {
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   fn from(duration: Option<Duration>) -> Self {
     Self::new(duration)
   }
 }
 impl AtomicOptionDuration {
   /// Creates a new `AtomicOptionDuration` with `None`.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn none() -> Self {
     Self(AtomicU128::new(encode_option_duration(None)))
   }
 
   /// Creates a new `AtomicOptionDuration` with the given value.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub const fn new(duration: Option<Duration>) -> Self {
     Self(AtomicU128::new(encode_option_duration(duration)))
   }
@@ -42,7 +42,7 @@ impl AtomicOptionDuration {
   ///
   /// # Panics
   /// Panics if order is [`Release`](Ordering::Release) or [`AcqRel`](Ordering::AcqRel).
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn load(&self, ordering: Ordering) -> Option<Duration> {
     decode_option_duration(self.0.load(ordering))
   }
@@ -54,7 +54,7 @@ impl AtomicOptionDuration {
   /// # Panics
   ///
   /// Panics if `order` is [`Acquire`](Ordering::Acquire) or [`AcqRel`](Ordering::AcqRel).
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn store(&self, val: Option<Duration>, ordering: Ordering) {
     self.0.store(encode_option_duration(val), ordering)
   }
@@ -62,7 +62,7 @@ impl AtomicOptionDuration {
   ///
   /// `swap` takes an [`Ordering`] argument which describes the memory ordering
   /// of this operation.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn swap(&self, val: Option<Duration>, ordering: Ordering) -> Option<Duration> {
     decode_option_duration(self.0.swap(encode_option_duration(val), ordering))
   }
@@ -82,7 +82,7 @@ impl AtomicOptionDuration {
   /// success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange_weak(
     &self,
     current: Option<Duration>,
@@ -115,7 +115,7 @@ impl AtomicOptionDuration {
   /// [`AcqRel`](Ordering::AcqRel) and must be equivalent or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn compare_exchange(
     &self,
     current: Option<Duration>,
@@ -166,7 +166,7 @@ impl AtomicOptionDuration {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(Duration::from_secs(8))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(Duration::from_secs(9)));
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -188,7 +188,7 @@ impl AtomicOptionDuration {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn into_inner(self) -> Option<Duration> {
     decode_option_duration(self.0.into_inner())
   }
@@ -204,14 +204,14 @@ impl AtomicOptionDuration {
   ///
   /// let is_lock_free = AtomicOptionDuration::is_lock_free();
   /// ```
-  #[inline]
+  #[cfg_attr(not(tarpaulin), inline(always))]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
   }
 }
 
 /// Encode an [`Option<Duration>`] into an [`u128`].
-#[inline]
+#[cfg_attr(not(tarpaulin), inline(always))]
 pub const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
   match option_duration {
     Some(duration) => {
@@ -238,7 +238,7 @@ pub const fn encode_option_duration(option_duration: Option<Duration>) -> u128 {
 /// This means `decode_option_duration(u128::MAX)` yields
 /// `Some(Duration::MAX)` rather than panicking as the previous
 /// implementation did.
-#[inline]
+#[cfg_attr(not(tarpaulin), inline(always))]
 pub const fn decode_option_duration(encoded: u128) -> Option<Duration> {
   if encoded >> 127 == 0 {
     None
