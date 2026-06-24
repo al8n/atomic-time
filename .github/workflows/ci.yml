@@ -34,7 +34,7 @@ jobs:
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Install Rust
       run: rustup update stable && rustup default stable && rustup component add rustfmt
     - name: Check formatting
@@ -52,7 +52,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Install Rust
       # --no-self-update is necessary because the windows environment cannot self-update rustup.exe.
       run: rustup update stable --no-self-update && rustup default stable && rustup component add clippy
@@ -84,7 +84,7 @@ jobs:
           - wasm32-wasip2
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache cargo build and registry
         uses: actions/cache@v6
         with:
@@ -112,7 +112,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Cache cargo build and registry
       uses: actions/cache@v6
       with:
@@ -141,7 +141,7 @@ jobs:
           - windows-latest
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@v7
     - name: Cache cargo build and registry
       uses: actions/cache@v6
       with:
@@ -164,7 +164,7 @@ jobs:
     name: sanitizer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache cargo build and registry
         uses: actions/cache@v6
         with:
@@ -203,7 +203,7 @@ jobs:
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache cargo build and registry
         uses: actions/cache@v6
         with:
@@ -239,7 +239,7 @@ jobs:
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache cargo build and registry
         uses: actions/cache@v6
         with:
@@ -259,7 +259,7 @@ jobs:
     name: valgrind
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Cache cargo build and registry
         uses:  actions/cache@v6
         with:
@@ -353,7 +353,7 @@ jobs:
       - miri-tb
       - miri-sb
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install Rust
         run: rustup update nightly && rustup default nightly
       - name: Install cargo-tarpaulin
