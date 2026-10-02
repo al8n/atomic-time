@@ -176,9 +176,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-sanitizer-
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
-      - name: Install rust-src
-        run: rustup component add rust-src
+        run: |
+          bash ci/rustup_install_retry.sh nightly --component rust-src
+          rustup default nightly
       - name: ASAN / LSAN / MSAN / TSAN
         run: bash ci/sanitizer.sh
 
@@ -271,11 +271,8 @@ jobs:
           restore-keys: |
             ubuntu-latest-valgrind-
 
-      - name: Install Rust ${{ env.stable }}
-        uses: actions-rs/toolchain@v1
-        with:
-            toolchain: ${{ env.stable }}
-            override: true
+      - name: Install Rust stable
+        run: rustup update stable --no-self-update && rustup default stable
       - name: Install Valgrind
         run: |
           sudo apt-get update -y
@@ -355,7 +352,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust
-        run: rustup update nightly && rustup default nightly
+        run: |
+          bash ci/rustup_install_retry.sh nightly
+          rustup default nightly
       - name: Install cargo-tarpaulin
         run: cargo install cargo-tarpaulin
       - name: Cache cargo build and registry
