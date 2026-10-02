@@ -29,7 +29,7 @@ if [ "$(uname)" = "Linux" ]; then
   esac
 fi
 
-rustup toolchain install nightly --component miri
+bash ci/rustup_install_retry.sh nightly --component miri
 rustup override set nightly
 cargo miri setup
 
