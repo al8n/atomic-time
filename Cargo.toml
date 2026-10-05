@@ -8,7 +8,7 @@ homepage = "https://github.com/al8n/atomic-time"
 documentation = "https://docs.rs/atomic-time"
 description = "Thread-safe atomic time types, lock-free where supported"
 license = "MIT OR Apache-2.0"
-rust-version = "1.70.0"
+rust-version = "1.85"
 keywords = [
   "atomic",
   "no_std",
@@ -27,10 +27,16 @@ exclude = ["benchmark", ".DS_Store", "output"]
 default = ["std"]
 std = ["portable-atomic/std", "serde?/std"]
 serde = ["dep:serde"]
+arbitrary = ["std", "dep:arbitrary"]
+quickcheck = ["std", "dep:quickcheck"]
+proptest = ["std", "dep:proptest"]
 
 [dependencies]
 portable-atomic = "1.15"
 serde = { version = "1", optional = true, default-features = false }
+arbitrary = { version = "1", optional = true, default-features = false }
+quickcheck = { version = "1", optional = true, default-features = false }
+proptest = { version = "1", optional = true, default-features = false, features = ["std"] }
 
 [dev-dependencies]
 serde_json = "1"

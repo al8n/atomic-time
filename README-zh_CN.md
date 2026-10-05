@@ -25,14 +25,14 @@
 
 ### 类型
 
-| 类型 | 包装 | `no_std` |
-|------|------|----------|
-| `AtomicDuration` | `Duration` | 支持 |
-| `AtomicOptionDuration` | `Option<Duration>` | 支持 |
-| `AtomicSystemTime` | `SystemTime` | 不支持 |
-| `AtomicOptionSystemTime` | `Option<SystemTime>` | 不支持 |
-| `AtomicInstant` | `Instant` | 不支持 |
-| `AtomicOptionInstant` | `Option<Instant>` | 不支持 |
+| 类型 | 包装 | `no_std` | `arbitrary` | `quickcheck` / `proptest` |
+|------|------|----------|-------------|--------------------------|
+| `AtomicDuration` | `Duration` | 支持 | 启用 `std` 时支持 | 启用 `std` 时支持 |
+| `AtomicOptionDuration` | `Option<Duration>` | 支持 | 启用 `std` 时支持 | 启用 `std` 时支持 |
+| `AtomicSystemTime` | `SystemTime` | 不支持 | 启用 `std` 时支持 | 启用 `std` 时支持 |
+| `AtomicOptionSystemTime` | `Option<SystemTime>` | 不支持 | 启用 `std` 时支持 | 启用 `std` 时支持 |
+| `AtomicInstant` | `Instant` | 不支持 | 不支持 | 不支持 |
+| `AtomicOptionInstant` | `Option<Instant>` | 不支持 | 不支持 | 不支持 |
 
 ## 安装
 
@@ -47,6 +47,9 @@ atomic-time = "1"
 |---------|---------|------|
 | `std` | 是 | 启用 `SystemTime` 和 `Instant` 类型 |
 | `serde` | 否 | 为所有类型启用 `Serialize`/`Deserialize`，也可用于 `no_std` 构建 |
+| `arbitrary` | 否 | 为 Duration 和 SystemTime 类型启用 [`arbitrary`](https://crates.io/crates/arbitrary)；需要 `std` |
+| `quickcheck` | 否 | 为 Duration 和 SystemTime 类型启用 [`quickcheck`](https://crates.io/crates/quickcheck)，并提供快照 `Clone` 实现 |
+| `proptest` | 否 | 为 Duration 和 SystemTime 类型启用 [`proptest`](https://crates.io/crates/proptest) 策略 |
 
 在 `no_std` 环境下使用（仅 `AtomicDuration` 和 `AtomicOptionDuration` 可用）：
 
@@ -56,6 +59,24 @@ atomic-time = { version = "1", default-features = false }
 ```
 
 在 `no_std` 构建中也可以通过 `features = ["serde"]` 启用可选的 `serde` 特性。
+
+三种生成/属性测试集成都需要 `std`。其中 `arbitrary` 也需要 `std`，因为当前上游
+`arbitrary` v1 crate 本身依赖 `std`。可选择启用其中一种集成：
+
+```toml
+[dependencies]
+atomic-time = { version = "1", features = ["arbitrary"] }
+# 或：atomic-time = { version = "1", features = ["quickcheck"] }
+# 或：atomic-time = { version = "1", features = ["proptest"] }
+```
+
+`quickcheck` 特性会为 `AtomicDuration`、`AtomicOptionDuration`、
+`AtomicSystemTime` 和 `AtomicOptionSystemTime` 实现 `Clone`。克隆操作会执行
+一次 `SeqCst` 加载；如果同时存在其他线程写入，克隆值就是该加载原子线性化时刻观察到的值。
+
+`AtomicInstant` 和 `AtomicOptionInstant` 有意不实现 `arbitrary`、
+`quickcheck` 或 `proptest` trait（这些特性也不会为它们添加 `Clone`）。它们的编码依赖
+进程本地基线，因此 seed 或 corpus 无法在不同进程运行之间产生可移植且确定的值。
 
 某些没有原生 CAS 支持的裸机目标，最终应用必须通过 Cargo feature unification 启用 `portable-atomic` 的 `critical-section` feature，并提供适用于目标的 `critical-section` 实现；或者采用官方 [`portable-atomic` 指南](https://github.com/taiki-e/portable-atomic#optional-features) 中的其他安全配置。
 
@@ -147,7 +168,7 @@ assert!(last_event.load(Ordering::Acquire).is_some());
 
 ## MSRV
 
-最低支持的 Rust 版本为 **1.70.0**。
+最低支持的 Rust 版本为 **1.85**。
 
 ## 许可证
 

@@ -357,11 +357,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust
-        run: rustup toolchain install 1.70.0 --profile minimal
+        run: rustup toolchain install 1.85.0 --profile minimal
       - name: Check MSRV
         run: |
-          cargo +1.70.0 check --lib --all-features
-          cargo +1.70.0 check --lib --no-default-features --features serde
+          cargo +1.85.0 check --lib --all-features
+          cargo +1.85.0 check --lib --no-default-features --features serde
 
   docs:
     name: docs
