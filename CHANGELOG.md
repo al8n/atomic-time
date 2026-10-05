@@ -7,6 +7,13 @@ STABILITY
 
 FEATURES
 
+- Added opt-in `arbitrary`, `quickcheck`, and `proptest` integrations for
+  `AtomicDuration`, `AtomicOptionDuration`, `AtomicSystemTime`, and
+  `AtomicOptionSystemTime`. `AtomicInstant` and `AtomicOptionInstant` remain
+  intentionally unsupported because their process-local baseline cannot be
+  generated deterministically and portably across runs. The `quickcheck`
+  feature adds `SeqCst` snapshot `Clone` implementations for the four
+  supported types.
 - Added `is_always_lock_free`, `try_update`, `update`, `fetch_min`, and
   `fetch_max` to all six atomic types. `fetch_update` remains available for
   compatibility. `fetch_min` and `fetch_max` return the previous value;
@@ -24,6 +31,9 @@ FIXES
 
 DOCUMENTATION AND TOOLING
 
+- Raised the MSRV to Rust 1.85. All property-testing integrations require
+  `std`, including `arbitrary`, because the current upstream `arbitrary` v1
+  crate itself requires `std`.
 - Clarified that operations are lock-free only on platforms with native
   `AtomicU128` support; `portable-atomic` may use global locks otherwise.
 - Documented the `SystemTime` and `Instant` contracts, and improved CI, MSRV,

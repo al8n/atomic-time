@@ -25,14 +25,14 @@ English | [简体中文][zh-cn-url]
 
 ### Types
 
-| Type | Wraps | `no_std` |
-|------|-------|----------|
-| `AtomicDuration` | `Duration` | Yes |
-| `AtomicOptionDuration` | `Option<Duration>` | Yes |
-| `AtomicSystemTime` | `SystemTime` | No |
-| `AtomicOptionSystemTime` | `Option<SystemTime>` | No |
-| `AtomicInstant` | `Instant` | No |
-| `AtomicOptionInstant` | `Option<Instant>` | No |
+| Type | Wraps | `no_std` | `arbitrary` | `quickcheck` / `proptest` |
+|------|-------|----------|-------------|--------------------------|
+| `AtomicDuration` | `Duration` | Yes | With `std` | With `std` |
+| `AtomicOptionDuration` | `Option<Duration>` | Yes | With `std` | With `std` |
+| `AtomicSystemTime` | `SystemTime` | No | With `std` | With `std` |
+| `AtomicOptionSystemTime` | `Option<SystemTime>` | No | With `std` | With `std` |
+| `AtomicInstant` | `Instant` | No | No | No |
+| `AtomicOptionInstant` | `Option<Instant>` | No | No | No |
 
 ## Installation
 
@@ -47,6 +47,9 @@ atomic-time = "1"
 |---------|---------|-------------|
 | `std` | Yes | Enables `SystemTime` and `Instant` types |
 | `serde` | No | Enables `Serialize`/`Deserialize` for all types, including `no_std` builds |
+| `arbitrary` | No | Enables [`arbitrary`](https://crates.io/crates/arbitrary) for duration and system-time types; requires `std` |
+| `quickcheck` | No | Enables [`quickcheck`](https://crates.io/crates/quickcheck) for duration and system-time types, and their snapshot `Clone` implementations |
+| `proptest` | No | Enables [`proptest`](https://crates.io/crates/proptest) strategies for duration and system-time types |
 
 For `no_std` environments (only `AtomicDuration` and `AtomicOptionDuration` are available):
 
@@ -56,6 +59,27 @@ atomic-time = { version = "1", default-features = false }
 ```
 
 The optional `serde` feature can also be enabled in a `no_std` build with `features = ["serde"]`.
+
+All three property-testing integrations require `std`. This includes
+`arbitrary`, because the current upstream `arbitrary` v1 crate itself uses
+`std`. Opt into one of the integrations with:
+
+```toml
+[dependencies]
+atomic-time = { version = "1", features = ["arbitrary"] }
+# or: atomic-time = { version = "1", features = ["quickcheck"] }
+# or: atomic-time = { version = "1", features = ["proptest"] }
+```
+
+The `quickcheck` feature implements `Clone` for `AtomicDuration`,
+`AtomicOptionDuration`, `AtomicSystemTime`, and `AtomicOptionSystemTime`.
+Cloning performs a `SeqCst` load, so under concurrent writes the cloned value
+is the value observed at that load's atomic linearization point.
+
+`AtomicInstant` and `AtomicOptionInstant` intentionally do not implement
+`arbitrary`, `quickcheck`, or `proptest` traits (and do not gain `Clone` from
+these features). Their encodings use a process-local baseline, so a seed or
+corpus cannot produce portable, deterministic values across process runs.
 
 On some bare-metal targets without native compare-and-swap support, the final application must use Cargo feature unification to enable `portable-atomic`'s `critical-section` feature and provide a target-appropriate `critical-section` implementation, or adopt another safe configuration from the official [`portable-atomic` guide](https://github.com/taiki-e/portable-atomic#optional-features).
 
@@ -150,7 +174,7 @@ Run with `cargo bench` in the `benchmark/` directory. Apple M4 Pro.
 
 ## MSRV
 
-The minimum supported Rust version is **1.70.0**.
+The minimum supported Rust version is **1.85**.
 
 ## License
 

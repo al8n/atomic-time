@@ -8,6 +8,17 @@
 //!
 //! The `std` feature controls the `SystemTime` and `Instant` types. Disable it
 //! for `no_std` builds to use the duration types without the standard library.
+//!
+//! The optional `arbitrary`, `quickcheck`, and `proptest` features provide
+//! fuzzing and property-testing support for the duration and system-time
+//! atomic types. All three require `std`: the current upstream `arbitrary` v1
+//! crate itself requires `std`. `quickcheck` additionally implements [`Clone`]
+//! as a `SeqCst` snapshot: when another thread writes concurrently, the clone
+//! is the value observed at its atomic linearization point.
+//!
+//! [`AtomicInstant`] and [`AtomicOptionInstant`] intentionally do not implement
+//! these generation traits. Their values use a process-local baseline and
+//! cannot be generated from a deterministic, portable cross-run corpus.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, allow(unused_attributes))]
@@ -121,3 +132,12 @@ pub use option_instant::AtomicOptionInstant;
 
 #[cfg(feature = "std")]
 use utils::{decode_instant_from_duration, encode_instant_to_duration};
+
+#[cfg(feature = "arbitrary")]
+mod arbitrary;
+
+#[cfg(feature = "quickcheck")]
+mod quickcheck;
+
+#[cfg(feature = "proptest")]
+mod proptest;
