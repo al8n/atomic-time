@@ -420,3 +420,4 @@ jobs:
           disable_search: true
           use_pypi: true
           version: v11.3.1
+          use_legacy_upload_endpoint: true

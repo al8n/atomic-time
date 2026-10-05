@@ -1,0 +1,79 @@
+name: Crates.io
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify crate release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+
+      - name: Verify tag and crate version
+        shell: bash
+        run: |
+          set -euo pipefail
+          crate_version="$(
+            cargo metadata --no-deps --format-version 1 |
+              jq -r '.packages[] | select(.name == "atomic-time") | .version'
+          )"
+          test -n "$crate_version"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            expected_tag="v${crate_version}"
+            if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+              echo "tag $GITHUB_REF_NAME does not match Cargo version $crate_version" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Verify release
+        run: |
+          cargo test --all-features
+          cargo package
+          cargo publish --dry-run
+
+  publish:
+    name: Publish crate
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.event.created == true && github.event.forced == false && github.event.deleted == false }}
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: crates-io
+    concurrency:
+      group: crates-io-publish-${{ github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+
+      - name: Reverify release provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          crate_version="$(
+            cargo metadata --no-deps --format-version 1 |
+              jq -r '.packages[] | select(.name == "atomic-time") | .version'
+          )"
+          test "$GITHUB_REF_NAME" = "v${crate_version}"
+
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish atomic-time
+        run: cargo publish --no-verify
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
