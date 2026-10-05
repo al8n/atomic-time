@@ -18,7 +18,7 @@ impl core::fmt::Debug for AtomicOptionSystemTime {
 }
 impl Default for AtomicOptionSystemTime {
   /// Equivalent to `Option::<SystemTime>::None`.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   fn default() -> Self {
     Self::none()
   }
@@ -27,7 +27,7 @@ impl From<Option<SystemTime>> for AtomicOptionSystemTime {
   /// # Panics
   ///
   /// Panics if the given `SystemTime` value is earlier than [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   fn from(system_time: Option<SystemTime>) -> Self {
     Self::new(system_time)
   }
@@ -44,7 +44,7 @@ impl AtomicOptionSystemTime {
   /// let none = AtomicOptionSystemTime::none();
   /// assert_eq!(none.load(std::sync::atomic::Ordering::SeqCst), None);
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub const fn none() -> Self {
     Self(AtomicOptionDuration::new(None))
   }
@@ -57,7 +57,7 @@ impl AtomicOptionSystemTime {
   ///
   /// let sys_time = AtomicOptionSystemTime::now();
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn now() -> Self {
     Self::new(Some(SystemTime::now()))
   }
@@ -67,7 +67,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn new(system_time: Option<SystemTime>) -> Self {
     Self(AtomicOptionDuration::new(
       system_time.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
@@ -75,7 +75,7 @@ impl AtomicOptionSystemTime {
   }
 
   /// Loads a value from the atomic system time.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn load(&self, order: Ordering) -> Option<SystemTime> {
     self.0.load(order).map(|val| SystemTime::UNIX_EPOCH + val)
   }
@@ -85,7 +85,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn store(&self, system_time: Option<SystemTime>, order: Ordering) {
     self.0.store(
       system_time.map(|val| val.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
@@ -98,7 +98,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn swap(&self, system_time: Option<SystemTime>, order: Ordering) -> Option<SystemTime> {
     self
       .0
@@ -115,7 +115,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn compare_exchange(
     &self,
     current: Option<SystemTime>,
@@ -140,7 +140,7 @@ impl AtomicOptionSystemTime {
   /// # Panics
   ///
   /// If the given `SystemTime` value is earlier than the [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn compare_exchange_weak(
     &self,
     current: Option<SystemTime>,
@@ -198,7 +198,7 @@ impl AtomicOptionSystemTime {
   /// assert_eq!(x.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| Some(x.map(|val| val + Duration::from_secs(1)))), Ok(Some(now + Duration::from_secs(2))));
   /// assert_eq!(x.load(Ordering::SeqCst), Some(now + Duration::from_secs(3)));
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn fetch_update<F>(
     &self,
     set_order: Ordering,
@@ -229,7 +229,7 @@ impl AtomicOptionSystemTime {
   ///
   /// let is_lock_free = AtomicOptionSystemTime::is_lock_free();
   /// ```
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn is_lock_free() -> bool {
     AtomicOptionDuration::is_lock_free()
   }
@@ -238,7 +238,7 @@ impl AtomicOptionSystemTime {
   ///
   /// This is safe because passing `self` by value guarantees that no other threads are
   /// concurrently accessing the atomic data.
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn into_inner(self) -> Option<SystemTime> {
     self.0.into_inner().map(|d| SystemTime::UNIX_EPOCH + d)
   }

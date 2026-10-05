@@ -58,7 +58,7 @@ pub mod utils {
   /// process-local baseline.
   #[cfg(feature = "std")]
   #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn encode_instant_to_duration(instant: Instant) -> Duration {
     let (epoch_dur, instant_now) = init();
     if instant <= instant_now {
@@ -78,7 +78,7 @@ pub mod utils {
   /// not durable deadlines.
   #[cfg(feature = "std")]
   #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-  #[cfg_attr(not(tarpaulin), inline(always))]
+  #[inline(always)]
   pub fn decode_instant_from_duration(duration: Duration) -> Instant {
     let (epoch_dur, instant_now) = init();
     if duration >= epoch_dur {

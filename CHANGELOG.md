@@ -15,6 +15,7 @@ DOCUMENTATION AND TOOLING
   `AtomicU128` support; `portable-atomic` may use global locks otherwise.
 - Documented the `SystemTime` and `Instant` contracts, and improved CI, MSRV,
   and documentation coverage.
+- Migrated coverage tooling to `cargo-llvm-cov`.
 
 # 0.2.1
 
