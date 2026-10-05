@@ -418,3 +418,5 @@ jobs:
           fail_ci_if_error: true
           files: ./lcov.info
           disable_search: true
+          use_pypi: true
+          version: v11.3.1
