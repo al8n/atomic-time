@@ -59,6 +59,20 @@ atomic-time = { version = "1", default-features = false }
 
 某些没有原生 CAS 支持的裸机目标，最终应用必须通过 Cargo feature unification 启用 `portable-atomic` 的 `critical-section` feature，并提供适用于目标的 `critical-section` 实现；或者采用官方 [`portable-atomic` 指南](https://github.com/taiki-e/portable-atomic#optional-features) 中的其他安全配置。
 
+### 原子操作
+
+六种原子类型都提供 `is_always_lock_free`、`try_update`、`update`、
+`fetch_min` 和 `fetch_max`；现有的 `fetch_update` 仍保留以兼容已有代码。
+`fetch_min` 和 `fetch_max` 返回操作前观察到的旧值。对于 `Option` 类型，排序为
+`None < Some`；`Instant` 的比较只适用于使用同一进程本地基线的值。
+
+`AtomicDuration` 和 `AtomicOptionDuration` 还提供
+`fetch_saturating_add` 与 `fetch_saturating_sub`，并返回旧值。对于
+`AtomicDuration`，它们分别饱和到 `Duration::MAX` 和 `Duration::ZERO`；对于
+`AtomicOptionDuration`，`Some` 值执行饱和，`None` 保持为 `None`（不会将其视为零）。
+这些方法有意命名为 `fetch_saturating_add/sub`，而不是 `fetch_add/sub`，以避免暗示整数
+wrapping；饱和加减辅助方法仅适用于 Duration 类型。
+
 ### 时间语义
 
 `AtomicSystemTime` 和 `AtomicOptionSystemTime` 只接受不早于 `SystemTime::UNIX_EPOCH` 的值；早于该时间的值会触发 panic。

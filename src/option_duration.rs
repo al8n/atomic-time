@@ -134,6 +134,53 @@ impl AtomicOptionDuration {
       .map(decode_option_duration)
       .map_err(decode_option_duration)
   }
+  /// Fetches the value and applies a function that can choose whether to store
+  /// a new value.
+  ///
+  /// Returns `Ok(previous_value)` when `f` returns `Some(_)`, and
+  /// `Err(previous_value)` when it returns `None`. The outer `Option` is the
+  /// update decision; returning `Some(None)` stores `None`. The closure can run
+  /// more than once when another thread changes the value concurrently, but it
+  /// is applied only once to the value that is stored.
+  ///
+  /// `set_order` describes the ordering of the successful update and
+  /// `fetch_order` describes failed compare-and-exchange loads. They have the
+  /// same requirements as the success and failure orderings of
+  /// [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the orderings are invalid for
+  /// [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::new(Some(Duration::from_secs(7)));
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None), Err(Some(Duration::from_secs(7))));
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(None)), Ok(Some(Duration::from_secs(7))));
+  /// ```
+  #[inline(always)]
+  pub fn try_update<F>(
+    &self,
+    set_order: Ordering,
+    fetch_order: Ordering,
+    mut f: F,
+  ) -> Result<Option<Duration>, Option<Duration>>
+  where
+    F: FnMut(Option<Duration>) -> Option<Option<Duration>>,
+  {
+    self
+      .0
+      .fetch_update(set_order, fetch_order, |d| {
+        f(decode_option_duration(d)).map(encode_option_duration)
+      })
+      .map(decode_option_duration)
+      .map_err(decode_option_duration)
+  }
   /// Fetches the value, and applies a function to it that returns an optional
   /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
   /// `Err(previous_value)`.
@@ -171,18 +218,143 @@ impl AtomicOptionDuration {
     &self,
     set_order: Ordering,
     fetch_order: Ordering,
-    mut f: F,
+    f: F,
   ) -> Result<Option<Duration>, Option<Duration>>
   where
     F: FnMut(Option<Duration>) -> Option<Option<Duration>>,
   {
-    self
-      .0
-      .fetch_update(set_order, fetch_order, |d| {
-        f(decode_option_duration(d)).map(encode_option_duration)
-      })
-      .map(decode_option_duration)
-      .map_err(decode_option_duration)
+    self.try_update(set_order, fetch_order, f)
+  }
+
+  /// Fetches the value, applies a function to produce a new value, stores it,
+  /// and returns the previous value.
+  ///
+  /// The closure can run more than once when another thread changes the value
+  /// concurrently, but it is applied only once to the value that is stored.
+  /// `set_order` and `fetch_order` have the same requirements as the success
+  /// and failure orderings of [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the orderings are invalid for
+  /// [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::new(Some(Duration::from_secs(7)));
+  /// assert_eq!(x.update(Ordering::SeqCst, Ordering::SeqCst, |_| None), Some(Duration::from_secs(7)));
+  /// assert_eq!(x.load(Ordering::SeqCst), None);
+  /// ```
+  #[inline(always)]
+  pub fn update<F>(&self, set_order: Ordering, fetch_order: Ordering, mut f: F) -> Option<Duration>
+  where
+    F: FnMut(Option<Duration>) -> Option<Duration>,
+  {
+    let mut current = self.0.load(fetch_order);
+    loop {
+      let new = encode_option_duration(f(decode_option_duration(current)));
+      match self
+        .0
+        .compare_exchange_weak(current, new, set_order, fetch_order)
+      {
+        Ok(previous) => return decode_option_duration(previous),
+        Err(actual) => current = actual,
+      }
+    }
+  }
+
+  /// Atomically stores the smaller of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// The encoded ordering is `None < Some(duration)`, and `Some` values use
+  /// their natural [`Duration`] ordering. `order` describes the memory ordering
+  /// of the read-modify-write operation.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::new(Some(Duration::from_secs(7)));
+  /// assert_eq!(x.fetch_min(None, Ordering::SeqCst), Some(Duration::from_secs(7)));
+  /// assert_eq!(x.load(Ordering::SeqCst), None);
+  /// ```
+  #[inline(always)]
+  pub fn fetch_min(&self, val: Option<Duration>, order: Ordering) -> Option<Duration> {
+    decode_option_duration(self.0.fetch_min(encode_option_duration(val), order))
+  }
+
+  /// Atomically stores the larger of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// The encoded ordering is `None < Some(duration)`, and `Some` values use
+  /// their natural [`Duration`] ordering. `order` describes the memory ordering
+  /// of the read-modify-write operation.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::new(None);
+  /// assert_eq!(x.fetch_max(Some(Duration::from_secs(7)), Ordering::SeqCst), None);
+  /// assert_eq!(x.load(Ordering::SeqCst), Some(Duration::from_secs(7)));
+  /// ```
+  #[inline(always)]
+  pub fn fetch_max(&self, val: Option<Duration>, order: Ordering) -> Option<Duration> {
+    decode_option_duration(self.0.fetch_max(encode_option_duration(val), order))
+  }
+
+  /// Adds `val` to a contained duration with saturation, returning the previous
+  /// value.
+  ///
+  /// `Some(duration)` is replaced with `Some(duration.saturating_add(val))`.
+  /// `None` remains `None`; it is never treated as [`Duration::ZERO`].
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::none();
+  /// assert_eq!(x.fetch_saturating_add(Duration::from_nanos(1), Ordering::SeqCst), None);
+  /// assert_eq!(x.load(Ordering::SeqCst), None);
+  /// ```
+  #[inline(always)]
+  pub fn fetch_saturating_add(&self, val: Duration, order: Ordering) -> Option<Duration> {
+    self.update(order, Ordering::Relaxed, |old| {
+      old.map(|duration| duration.saturating_add(val))
+    })
+  }
+
+  /// Subtracts `val` from a contained duration with saturation, returning the
+  /// previous value.
+  ///
+  /// `Some(duration)` is replaced with `Some(duration.saturating_sub(val))`.
+  /// `None` remains `None`; it is never treated as [`Duration::ZERO`].
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  /// use std::{sync::atomic::Ordering, time::Duration};
+  ///
+  /// let x = AtomicOptionDuration::none();
+  /// assert_eq!(x.fetch_saturating_sub(Duration::from_nanos(1), Ordering::SeqCst), None);
+  /// assert_eq!(x.load(Ordering::SeqCst), None);
+  /// ```
+  #[inline(always)]
+  pub fn fetch_saturating_sub(&self, val: Duration, order: Ordering) -> Option<Duration> {
+    self.update(order, Ordering::Relaxed, |old| {
+      old.map(|duration| duration.saturating_sub(val))
+    })
   }
   /// Consumes the atomic and returns the contained value.
   ///
@@ -207,6 +379,25 @@ impl AtomicOptionDuration {
   #[inline(always)]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
+  }
+
+  /// Returns whether operations on values of this type are always lock-free.
+  ///
+  /// A `false` result does not preclude lock-free operations selected through
+  /// runtime CPU feature detection; use [`is_lock_free`](Self::is_lock_free)
+  /// to query the current target at runtime.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionDuration;
+  ///
+  /// const ALWAYS_LOCK_FREE: bool = AtomicOptionDuration::is_always_lock_free();
+  /// let _ = ALWAYS_LOCK_FREE;
+  /// ```
+  #[inline(always)]
+  pub const fn is_always_lock_free() -> bool {
+    AtomicU128::is_always_lock_free()
   }
 }
 
@@ -587,6 +778,135 @@ mod tests {
     // fetch_update returning None should fail
     let result = atomic_duration.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |_| None);
     assert!(result.is_err());
+  }
+
+  #[test]
+  fn test_atomic_option_duration_try_update() {
+    let initial = Some(Duration::from_secs(4));
+    let atomic_duration = AtomicOptionDuration::new(initial);
+
+    assert_eq!(
+      atomic_duration.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None),
+      Err(initial)
+    );
+    assert_eq!(
+      atomic_duration.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| Some(None)),
+      Ok(initial)
+    );
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_update_returns_previous_value() {
+    let initial = Some(Duration::from_secs(4));
+    let atomic_duration = AtomicOptionDuration::new(initial);
+
+    assert_eq!(
+      atomic_duration.update(Ordering::SeqCst, Ordering::SeqCst, |_| None),
+      initial
+    );
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_fetch_min_and_max() {
+    let low = Some(Duration::from_secs(3));
+    let middle = Some(Duration::from_secs(5));
+    let high = Some(Duration::from_secs(7));
+    let atomic_duration = AtomicOptionDuration::new(middle);
+
+    assert_eq!(atomic_duration.fetch_min(high, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.fetch_min(middle, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.fetch_min(low, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), low);
+
+    atomic_duration.store(middle, Ordering::SeqCst);
+    assert_eq!(atomic_duration.fetch_max(low, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.fetch_max(middle, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.fetch_max(high, Ordering::SeqCst), middle);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), high);
+
+    atomic_duration.store(None, Ordering::SeqCst);
+    assert_eq!(atomic_duration.fetch_min(low, Ordering::SeqCst), None);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), None);
+    assert_eq!(atomic_duration.fetch_max(low, Ordering::SeqCst), None);
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), low);
+  }
+
+  #[test]
+  fn test_atomic_option_duration_fetch_saturating_arithmetic() {
+    let none = AtomicOptionDuration::none();
+    assert_eq!(
+      none.fetch_saturating_add(Duration::from_nanos(1), Ordering::SeqCst),
+      None
+    );
+    assert_eq!(none.load(Ordering::SeqCst), None);
+    assert_eq!(
+      none.fetch_saturating_sub(Duration::from_nanos(1), Ordering::SeqCst),
+      None
+    );
+    assert_eq!(none.load(Ordering::SeqCst), None);
+
+    let atomic_duration = AtomicOptionDuration::new(Some(Duration::new(0, 999_999_999)));
+    assert_eq!(
+      atomic_duration.fetch_saturating_add(Duration::from_nanos(1), Ordering::SeqCst),
+      Some(Duration::new(0, 999_999_999))
+    );
+    assert_eq!(
+      atomic_duration.load(Ordering::SeqCst),
+      Some(Duration::from_secs(1))
+    );
+
+    atomic_duration.store(Some(Duration::MAX), Ordering::SeqCst);
+    assert_eq!(
+      atomic_duration.fetch_saturating_add(Duration::from_nanos(1), Ordering::SeqCst),
+      Some(Duration::MAX)
+    );
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(Duration::MAX));
+
+    atomic_duration.store(Some(Duration::ZERO), Ordering::SeqCst);
+    assert_eq!(
+      atomic_duration.fetch_saturating_sub(Duration::from_nanos(1), Ordering::SeqCst),
+      Some(Duration::ZERO)
+    );
+    assert_eq!(atomic_duration.load(Ordering::SeqCst), Some(Duration::ZERO));
+  }
+
+  #[test]
+  fn test_atomic_option_duration_always_lock_free_implies_lock_free() {
+    assert!(!AtomicOptionDuration::is_always_lock_free() || AtomicOptionDuration::is_lock_free());
+  }
+
+  #[test]
+  #[cfg(feature = "std")]
+  fn test_atomic_option_duration_saturating_add_is_exact_under_contention() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let atomic_duration = Arc::new(AtomicOptionDuration::new(Some(Duration::ZERO)));
+    let mut handles = vec![];
+
+    for _ in 0..4 {
+      let atomic_clone = Arc::clone(&atomic_duration);
+      handles.push(thread::spawn(move || {
+        for _ in 0..100 {
+          atomic_clone.fetch_saturating_add(Duration::from_nanos(1), Ordering::SeqCst);
+        }
+      }));
+    }
+
+    for handle in handles {
+      handle.join().unwrap();
+    }
+
+    assert_eq!(
+      atomic_duration.load(Ordering::SeqCst),
+      Some(Duration::from_nanos(400))
+    );
   }
 
   #[cfg(feature = "serde")]

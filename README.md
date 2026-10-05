@@ -59,6 +59,23 @@ The optional `serde` feature can also be enabled in a `no_std` build with `featu
 
 On some bare-metal targets without native compare-and-swap support, the final application must use Cargo feature unification to enable `portable-atomic`'s `critical-section` feature and provide a target-appropriate `critical-section` implementation, or adopt another safe configuration from the official [`portable-atomic` guide](https://github.com/taiki-e/portable-atomic#optional-features).
 
+### Atomic Operations
+
+All six atomic types provide `is_always_lock_free`, `try_update`, `update`,
+`fetch_min`, and `fetch_max`; the existing `fetch_update` remains available for
+compatibility. `fetch_min` and `fetch_max` return the value observed before the
+operation. For `Option` types, ordering is `None < Some`; `Instant`
+comparisons are meaningful only for values using the same process-local
+baseline.
+
+`AtomicDuration` and `AtomicOptionDuration` also provide
+`fetch_saturating_add` and `fetch_saturating_sub`, returning the old value. For
+`AtomicDuration`, these saturate at `Duration::MAX` and `Duration::ZERO`. For
+`AtomicOptionDuration`, `Some` values saturate while `None` remains `None` (it
+is not treated as zero). These names intentionally use
+`fetch_saturating_add/sub`, rather than `fetch_add/sub`, to avoid implying
+integer wrapping; saturating add/sub helpers apply only to the Duration types.
+
 ### Time Semantics
 
 `AtomicSystemTime` and `AtomicOptionSystemTime` accept only values at or after `SystemTime::UNIX_EPOCH`; earlier values panic.

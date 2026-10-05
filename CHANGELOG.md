@@ -5,6 +5,19 @@ STABILITY
 - Stabilized the public API and wire format; values encoded by 0.2.1 remain
   compatible.
 
+FEATURES
+
+- Added `is_always_lock_free`, `try_update`, `update`, `fetch_min`, and
+  `fetch_max` to all six atomic types. `fetch_update` remains available for
+  compatibility. `fetch_min` and `fetch_max` return the previous value;
+  `Option` ordering is `None < Some`, and `Instant` comparisons are limited to
+  values using the same process-local baseline.
+- Added `fetch_saturating_add` and `fetch_saturating_sub` to
+  `AtomicDuration` and `AtomicOptionDuration`. They return the previous value;
+  `AtomicDuration` saturates at `Duration::MAX` or `Duration::ZERO`, while
+  `AtomicOptionDuration` saturates `Some` and preserves `None` rather than
+  treating it as zero. The names avoid implying integer wrapping.
+
 FIXES
 
 - Fixed `serde` support for `no_std` builds.

@@ -29,7 +29,7 @@ std = ["portable-atomic/std", "serde?/std"]
 serde = ["dep:serde"]
 
 [dependencies]
-portable-atomic = "1"
+portable-atomic = "1.15"
 serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]

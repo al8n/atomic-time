@@ -159,6 +159,58 @@ impl AtomicOptionSystemTime {
     }
   }
 
+  /// Fetches the value and applies a function that can choose whether to store
+  /// a new value.
+  ///
+  /// Returns `Ok(previous_value)` when `f` returns `Some(_)`, and
+  /// `Err(previous_value)` when it returns `None`. The outer `Option` is the
+  /// update decision; returning `Some(None)` stores `None`. The closure can run
+  /// more than once when another thread changes the value concurrently, but it
+  /// is applied only once to the value that is stored.
+  ///
+  /// `set_order` describes the ordering of the successful update and
+  /// `fetch_order` describes failed compare-and-exchange loads. They have the
+  /// same requirements as the success and failure orderings of
+  /// [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the orderings are invalid for
+  /// [`compare_exchange`](Self::compare_exchange), or if a `Some` value passed
+  /// to or returned from the function is earlier than
+  /// [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  /// use std::{sync::atomic::Ordering, time::{Duration, SystemTime}};
+  ///
+  /// let start = SystemTime::UNIX_EPOCH + Duration::from_secs(7);
+  /// let x = AtomicOptionSystemTime::new(Some(start));
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None), Err(Some(start)));
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |old| Some(old.map(|time| time + Duration::from_secs(1)))), Ok(Some(start)));
+  /// ```
+  #[inline(always)]
+  pub fn try_update<F>(
+    &self,
+    set_order: Ordering,
+    fetch_order: Ordering,
+    mut f: F,
+  ) -> Result<Option<SystemTime>, Option<SystemTime>>
+  where
+    F: FnMut(Option<SystemTime>) -> Option<Option<SystemTime>>,
+  {
+    self
+      .0
+      .try_update(set_order, fetch_order, |duration| {
+        f(duration.map(|d| SystemTime::UNIX_EPOCH + d))
+          .map(|system_time| system_time.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()))
+      })
+      .map(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
+      .map_err(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
+  }
+
   /// Fetches the value, and applies a function to it that returns an optional
   /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
   /// `Err(previous_value)`.
@@ -203,19 +255,133 @@ impl AtomicOptionSystemTime {
     &self,
     set_order: Ordering,
     fetch_order: Ordering,
-    mut f: F,
+    f: F,
   ) -> Result<Option<SystemTime>, Option<SystemTime>>
   where
     F: FnMut(Option<SystemTime>) -> Option<Option<SystemTime>>,
   {
+    self.try_update(set_order, fetch_order, f)
+  }
+
+  /// Fetches the value, applies a function to produce a new value, stores it,
+  /// and returns the previous value.
+  ///
+  /// The closure can run more than once when another thread changes the value
+  /// concurrently, but it is applied only once to the value that is stored.
+  /// `set_order` and `fetch_order` have the same requirements as the success
+  /// and failure orderings of [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Panics
+  ///
+  /// Panics if the orderings are invalid for
+  /// [`compare_exchange`](Self::compare_exchange), or if a `Some` value passed
+  /// to or returned from the function is earlier than
+  /// [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  /// use std::{sync::atomic::Ordering, time::{Duration, SystemTime}};
+  ///
+  /// let start = SystemTime::UNIX_EPOCH + Duration::from_secs(7);
+  /// let x = AtomicOptionSystemTime::new(Some(start));
+  /// assert_eq!(x.update(Ordering::SeqCst, Ordering::SeqCst, |old| old.map(|time| time + Duration::from_secs(1))), Some(start));
+  /// assert_eq!(x.load(Ordering::SeqCst), Some(start + Duration::from_secs(1)));
+  /// ```
+  #[inline(always)]
+  pub fn update<F>(
+    &self,
+    set_order: Ordering,
+    fetch_order: Ordering,
+    mut f: F,
+  ) -> Option<SystemTime>
+  where
+    F: FnMut(Option<SystemTime>) -> Option<SystemTime>,
+  {
     self
       .0
-      .fetch_update(set_order, fetch_order, |duration| {
+      .update(set_order, fetch_order, |duration| {
         f(duration.map(|d| SystemTime::UNIX_EPOCH + d))
-          .map(|system_time| system_time.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()))
+          .map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap())
       })
-      .map(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
-      .map_err(|duration| duration.map(|d| SystemTime::UNIX_EPOCH + d))
+      .map(|d| SystemTime::UNIX_EPOCH + d)
+  }
+
+  /// Atomically stores the smaller of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// `None` is ordered before every `Some` value, and `Some` values are ordered
+  /// by their duration from [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH). `order`
+  /// describes the memory ordering of the read-modify-write operation. Using
+  /// [`Acquire`](Ordering::Acquire) makes its store part relaxed, and using
+  /// [`Release`](Ordering::Release) makes its load part relaxed.
+  ///
+  /// # Panics
+  ///
+  /// Panics if a `Some` value in `val` is earlier than
+  /// [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  /// use std::{sync::atomic::Ordering, time::{Duration, SystemTime}};
+  ///
+  /// let low = SystemTime::UNIX_EPOCH + Duration::from_secs(5);
+  /// let middle = low + Duration::from_secs(1);
+  /// let high = middle + Duration::from_secs(1);
+  /// let x = AtomicOptionSystemTime::new(Some(middle));
+  /// assert_eq!(x.fetch_min(Some(high), Ordering::SeqCst), Some(middle));
+  /// assert_eq!(x.fetch_min(Some(low), Ordering::SeqCst), Some(middle));
+  /// assert_eq!(x.load(Ordering::SeqCst), Some(low));
+  /// ```
+  #[inline(always)]
+  pub fn fetch_min(&self, val: Option<SystemTime>, order: Ordering) -> Option<SystemTime> {
+    self
+      .0
+      .fetch_min(
+        val.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
+        order,
+      )
+      .map(|d| SystemTime::UNIX_EPOCH + d)
+  }
+
+  /// Atomically stores the larger of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// `None` is ordered before every `Some` value, and `Some` values are ordered
+  /// by their duration from [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH). `order`
+  /// describes the memory ordering of the read-modify-write operation. Using
+  /// [`Acquire`](Ordering::Acquire) makes its store part relaxed, and using
+  /// [`Release`](Ordering::Release) makes its load part relaxed.
+  ///
+  /// # Panics
+  ///
+  /// Panics if a `Some` value in `val` is earlier than
+  /// [`UNIX_EPOCH`](SystemTime::UNIX_EPOCH).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  /// use std::{sync::atomic::Ordering, time::{Duration, SystemTime}};
+  ///
+  /// let high = SystemTime::UNIX_EPOCH + Duration::from_secs(7);
+  /// let x = AtomicOptionSystemTime::none();
+  /// assert_eq!(x.fetch_max(None, Ordering::SeqCst), None);
+  /// assert_eq!(x.fetch_max(Some(high), Ordering::SeqCst), None);
+  /// assert_eq!(x.load(Ordering::SeqCst), Some(high));
+  /// ```
+  #[inline(always)]
+  pub fn fetch_max(&self, val: Option<SystemTime>, order: Ordering) -> Option<SystemTime> {
+    self
+      .0
+      .fetch_max(
+        val.map(|d| d.duration_since(SystemTime::UNIX_EPOCH).unwrap()),
+        order,
+      )
+      .map(|d| SystemTime::UNIX_EPOCH + d)
   }
 
   /// Returns `true` if operations on values of this type are lock-free.
@@ -232,6 +398,25 @@ impl AtomicOptionSystemTime {
   #[inline(always)]
   pub fn is_lock_free() -> bool {
     AtomicOptionDuration::is_lock_free()
+  }
+
+  /// Returns whether operations on values of this type are always lock-free.
+  ///
+  /// A `false` result does not preclude lock-free operations selected through
+  /// runtime CPU feature detection; use [`is_lock_free`](Self::is_lock_free)
+  /// to query the current target at runtime.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicOptionSystemTime;
+  ///
+  /// const ALWAYS_LOCK_FREE: bool = AtomicOptionSystemTime::is_always_lock_free();
+  /// let _ = ALWAYS_LOCK_FREE;
+  /// ```
+  #[inline(always)]
+  pub const fn is_always_lock_free() -> bool {
+    AtomicOptionDuration::is_always_lock_free()
   }
 
   /// Consumes the atomic and returns the contained value.
@@ -355,6 +540,107 @@ mod tests {
     assert_eq!(
       atomic_time.load(Ordering::SeqCst),
       Some(now + Duration::from_secs(1))
+    );
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_try_update() {
+    let start = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+    let atomic_time = AtomicOptionSystemTime::new(Some(start));
+
+    assert_eq!(
+      atomic_time.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None),
+      Err(Some(start))
+    );
+    assert_eq!(
+      atomic_time.try_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+        Some(current.map(|time| time + Duration::from_secs(2)))
+      }),
+      Ok(Some(start))
+    );
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      Some(start + Duration::from_secs(2))
+    );
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_update_returns_previous_value() {
+    let start = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+    let atomic_time = AtomicOptionSystemTime::new(Some(start));
+
+    assert_eq!(
+      atomic_time.update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+        current.map(|time| time + Duration::from_secs(2))
+      }),
+      Some(start)
+    );
+    assert_eq!(
+      atomic_time.load(Ordering::SeqCst),
+      Some(start + Duration::from_secs(2))
+    );
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_fetch_min_and_max() {
+    let low = SystemTime::UNIX_EPOCH + Duration::from_secs(10);
+    let middle = low + Duration::from_secs(5);
+    let high = middle + Duration::from_secs(5);
+    let atomic_time = AtomicOptionSystemTime::new(Some(middle));
+
+    assert_eq!(
+      atomic_time.fetch_min(Some(high), Ordering::SeqCst),
+      Some(middle)
+    );
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(middle));
+    assert_eq!(
+      atomic_time.fetch_min(Some(middle), Ordering::SeqCst),
+      Some(middle)
+    );
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(middle));
+    assert_eq!(
+      atomic_time.fetch_min(Some(low), Ordering::SeqCst),
+      Some(middle)
+    );
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(low));
+
+    atomic_time.store(Some(middle), Ordering::SeqCst);
+    assert_eq!(atomic_time.fetch_max(None, Ordering::SeqCst), Some(middle));
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(middle));
+    assert_eq!(
+      atomic_time.fetch_max(Some(middle), Ordering::SeqCst),
+      Some(middle)
+    );
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(middle));
+    assert_eq!(
+      atomic_time.fetch_max(Some(high), Ordering::SeqCst),
+      Some(middle)
+    );
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(high));
+
+    atomic_time.store(None, Ordering::SeqCst);
+    assert_eq!(atomic_time.fetch_min(None, Ordering::SeqCst), None);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), None);
+    assert_eq!(atomic_time.fetch_max(None, Ordering::SeqCst), None);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), None);
+    assert_eq!(atomic_time.fetch_max(Some(low), Ordering::SeqCst), None);
+    assert_eq!(atomic_time.load(Ordering::SeqCst), Some(low));
+  }
+
+  #[test]
+  fn test_atomic_option_system_time_always_lock_free_implies_lock_free() {
+    assert!(
+      !AtomicOptionSystemTime::is_always_lock_free() || AtomicOptionSystemTime::is_lock_free()
+    );
+  }
+
+  #[test]
+  #[should_panic]
+  fn test_atomic_option_system_time_fetch_min_before_epoch_panics() {
+    let atomic_time = AtomicOptionSystemTime::none();
+    atomic_time.fetch_min(
+      Some(SystemTime::UNIX_EPOCH - Duration::from_secs(1)),
+      Ordering::SeqCst,
     );
   }
 

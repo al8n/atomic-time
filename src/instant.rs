@@ -112,6 +112,49 @@ impl AtomicInstant {
     }
   }
 
+  /// Fetches the value and applies a function that can choose whether to store
+  /// a new value.
+  ///
+  /// Returns `Ok(previous_value)` when `f` returns `Some(_)`, and
+  /// `Err(previous_value)` when it returns `None`. The closure can run more
+  /// than once when another thread changes the value concurrently, but it is
+  /// applied only once to the value that is stored.
+  ///
+  /// `set_order` describes the ordering of the successful update and
+  /// `fetch_order` describes failed compare-and-exchange loads. They have the
+  /// same requirements as the success and failure orderings of
+  /// [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicInstant;
+  /// use std::{sync::atomic::Ordering, time::{Duration, Instant}};
+  ///
+  /// let start = Instant::now();
+  /// let x = AtomicInstant::new(start);
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None), Err(start));
+  /// assert_eq!(x.try_update(Ordering::SeqCst, Ordering::SeqCst, |old| Some(old + Duration::from_secs(1))), Ok(start));
+  /// ```
+  #[inline(always)]
+  pub fn try_update<F>(
+    &self,
+    set_order: Ordering,
+    fetch_order: Ordering,
+    mut f: F,
+  ) -> Result<Instant, Instant>
+  where
+    F: FnMut(Instant) -> Option<Instant>,
+  {
+    self
+      .0
+      .try_update(set_order, fetch_order, |duration| {
+        f(decode_instant_from_duration(duration)).map(encode_instant_to_duration)
+      })
+      .map(decode_instant_from_duration)
+      .map_err(decode_instant_from_duration)
+  }
+
   /// Fetches the value, and applies a function to it that returns an optional
   /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
   /// `Err(previous_value)`.
@@ -151,18 +194,101 @@ impl AtomicInstant {
     &self,
     set_order: Ordering,
     fetch_order: Ordering,
-    mut f: F,
+    f: F,
   ) -> Result<Instant, Instant>
   where
     F: FnMut(Instant) -> Option<Instant>,
   {
-    self
-      .0
-      .fetch_update(set_order, fetch_order, |duration| {
-        f(decode_instant_from_duration(duration)).map(encode_instant_to_duration)
-      })
-      .map(decode_instant_from_duration)
-      .map_err(decode_instant_from_duration)
+    self.try_update(set_order, fetch_order, f)
+  }
+
+  /// Fetches the value, applies a function to produce a new value, stores it,
+  /// and returns the previous value.
+  ///
+  /// The closure can run more than once when another thread changes the value
+  /// concurrently, but it is applied only once to the value that is stored.
+  /// `set_order` and `fetch_order` have the same requirements as the success
+  /// and failure orderings of [`compare_exchange`](Self::compare_exchange).
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicInstant;
+  /// use std::{sync::atomic::Ordering, time::{Duration, Instant}};
+  ///
+  /// let start = Instant::now();
+  /// let x = AtomicInstant::new(start);
+  /// assert_eq!(x.update(Ordering::SeqCst, Ordering::SeqCst, |old| old + Duration::from_secs(1)), start);
+  /// assert_eq!(x.load(Ordering::SeqCst), start + Duration::from_secs(1));
+  /// ```
+  #[inline(always)]
+  pub fn update<F>(&self, set_order: Ordering, fetch_order: Ordering, mut f: F) -> Instant
+  where
+    F: FnMut(Instant) -> Instant,
+  {
+    decode_instant_from_duration(self.0.update(set_order, fetch_order, |duration| {
+      encode_instant_to_duration(f(decode_instant_from_duration(duration)))
+    }))
+  }
+
+  /// Atomically stores the smaller of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// The ordering compares values encoded with this process's baseline. It is
+  /// meaningful only for `Instant` values using the same process-local
+  /// baseline; it does not assign ordering semantics across processes or
+  /// process restarts. `order` describes the memory ordering of the
+  /// read-modify-write operation. Using [`Acquire`](Ordering::Acquire) makes
+  /// its store part relaxed, and using [`Release`](Ordering::Release) makes its
+  /// load part relaxed.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicInstant;
+  /// use std::{sync::atomic::Ordering, time::{Duration, Instant}};
+  ///
+  /// let middle = Instant::now();
+  /// let low = middle - Duration::from_secs(1);
+  /// let high = middle + Duration::from_secs(1);
+  /// let x = AtomicInstant::new(middle);
+  /// assert_eq!(x.fetch_min(high, Ordering::SeqCst), middle);
+  /// assert_eq!(x.fetch_min(low, Ordering::SeqCst), middle);
+  /// assert_eq!(x.load(Ordering::SeqCst), low);
+  /// ```
+  #[inline(always)]
+  pub fn fetch_min(&self, val: Instant, order: Ordering) -> Instant {
+    decode_instant_from_duration(self.0.fetch_min(encode_instant_to_duration(val), order))
+  }
+
+  /// Atomically stores the larger of the current value and `val`, returning
+  /// the previous value.
+  ///
+  /// The ordering compares values encoded with this process's baseline. It is
+  /// meaningful only for `Instant` values using the same process-local
+  /// baseline; it does not assign ordering semantics across processes or
+  /// process restarts. `order` describes the memory ordering of the
+  /// read-modify-write operation. Using [`Acquire`](Ordering::Acquire) makes
+  /// its store part relaxed, and using [`Release`](Ordering::Release) makes its
+  /// load part relaxed.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicInstant;
+  /// use std::{sync::atomic::Ordering, time::{Duration, Instant}};
+  ///
+  /// let middle = Instant::now();
+  /// let low = middle - Duration::from_secs(1);
+  /// let high = middle + Duration::from_secs(1);
+  /// let x = AtomicInstant::new(middle);
+  /// assert_eq!(x.fetch_max(low, Ordering::SeqCst), middle);
+  /// assert_eq!(x.fetch_max(high, Ordering::SeqCst), middle);
+  /// assert_eq!(x.load(Ordering::SeqCst), high);
+  /// ```
+  #[inline(always)]
+  pub fn fetch_max(&self, val: Instant, order: Ordering) -> Instant {
+    decode_instant_from_duration(self.0.fetch_max(encode_instant_to_duration(val), order))
   }
 
   /// Returns `true` if operations on values of this type are lock-free.
@@ -179,6 +305,25 @@ impl AtomicInstant {
   #[inline(always)]
   pub fn is_lock_free() -> bool {
     AtomicU128::is_lock_free()
+  }
+
+  /// Returns whether operations on values of this type are always lock-free.
+  ///
+  /// A `false` result does not preclude lock-free operations selected through
+  /// runtime CPU feature detection; use [`is_lock_free`](Self::is_lock_free)
+  /// to query the current target at runtime.
+  ///
+  /// # Examples
+  ///
+  /// ```rust
+  /// use atomic_time::AtomicInstant;
+  ///
+  /// const ALWAYS_LOCK_FREE: bool = AtomicInstant::is_always_lock_free();
+  /// let _ = ALWAYS_LOCK_FREE;
+  /// ```
+  #[inline(always)]
+  pub const fn is_always_lock_free() -> bool {
+    AtomicDuration::is_always_lock_free()
   }
 
   /// Consumes the atomic and returns the contained value.
@@ -299,6 +444,72 @@ mod tests {
       atomic_instant.load(Ordering::SeqCst),
       now + Duration::from_secs(1)
     );
+  }
+
+  #[test]
+  fn test_atomic_instant_try_update() {
+    let start = Instant::now();
+    let atomic_instant = AtomicInstant::new(start);
+
+    assert_eq!(
+      atomic_instant.try_update(Ordering::SeqCst, Ordering::SeqCst, |_| None),
+      Err(start)
+    );
+    assert_eq!(
+      atomic_instant.try_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+        Some(current + Duration::from_secs(2))
+      }),
+      Ok(start)
+    );
+    assert_eq!(
+      atomic_instant.load(Ordering::SeqCst),
+      start + Duration::from_secs(2)
+    );
+  }
+
+  #[test]
+  fn test_atomic_instant_update_returns_previous_value() {
+    let start = Instant::now();
+    let atomic_instant = AtomicInstant::new(start);
+
+    assert_eq!(
+      atomic_instant.update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+        current + Duration::from_secs(2)
+      }),
+      start
+    );
+    assert_eq!(
+      atomic_instant.load(Ordering::SeqCst),
+      start + Duration::from_secs(2)
+    );
+  }
+
+  #[test]
+  fn test_atomic_instant_fetch_min_and_max() {
+    let middle = Instant::now();
+    let low = middle.checked_sub(Duration::from_secs(2)).unwrap();
+    let high = middle.checked_add(Duration::from_secs(2)).unwrap();
+    let atomic_instant = AtomicInstant::new(middle);
+
+    assert_eq!(atomic_instant.fetch_min(high, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.fetch_min(middle, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.fetch_min(low, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), low);
+
+    atomic_instant.store(middle, Ordering::SeqCst);
+    assert_eq!(atomic_instant.fetch_max(low, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.fetch_max(middle, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.fetch_max(high, Ordering::SeqCst), middle);
+    assert_eq!(atomic_instant.load(Ordering::SeqCst), high);
+  }
+
+  #[test]
+  fn test_atomic_instant_always_lock_free_implies_lock_free() {
+    assert!(!AtomicInstant::is_always_lock_free() || AtomicInstant::is_lock_free());
   }
 
   #[test]
