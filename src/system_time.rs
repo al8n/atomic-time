@@ -4,6 +4,8 @@ use std::time::SystemTime;
 use crate::AtomicDuration;
 
 /// An atomic version of [`std::time::SystemTime`].
+///
+/// Only [`SystemTime`] values at or after [`SystemTime::UNIX_EPOCH`] are supported.
 #[repr(transparent)]
 pub struct AtomicSystemTime(AtomicDuration);
 
@@ -149,7 +151,7 @@ impl AtomicSystemTime {
   ///
   /// Using [`Acquire`](Ordering::Acquire) as success ordering makes the store part
   /// of this operation [`Relaxed`](Ordering::Relaxed), and using [`Release`](Ordering::Release) makes the final successful load
-  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Release)
+  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Relaxed)
   /// and must be equivalent to or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
@@ -420,19 +422,10 @@ mod tests {
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_system_time_serde() {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize)]
-    struct Test {
-      time: AtomicSystemTime,
-    }
-
     let now = SystemTime::now();
-    let test = Test {
-      time: AtomicSystemTime::new(now),
-    };
-    let serialized = serde_json::to_string(&test).unwrap();
-    let deserialized: Test = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized.time.load(Ordering::SeqCst), now,);
+    let atomic = AtomicSystemTime::new(now);
+    let serialized = serde_json::to_string(&atomic).unwrap();
+    let deserialized: AtomicSystemTime = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized.load(Ordering::SeqCst), now,);
   }
 }

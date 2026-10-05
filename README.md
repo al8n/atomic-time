@@ -3,7 +3,7 @@
 </div>
 <div align="center">
 
-Lock-free, thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants
+Thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants; lock-free on platforms with native `AtomicU128` support, otherwise `portable-atomic` may fall back to a global lock
 
 [<img alt="github" src="https://img.shields.io/badge/github-al8n/atomic--time-8da0cb?style=for-the-badge&logo=Github" height="22">][Github-url]
 <img alt="LoC" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fal8n%2F327b2a8aef9003246e45c6e47fe63937%2Fraw%2Fatomic-time" height="22">
@@ -21,7 +21,7 @@ English | [简体中文][zh-cn-url]
 
 ## Introduction
 
-`atomic-time` provides lock-free, thread-safe atomic versions of Rust's standard time types. All types use `AtomicU128` (via [`portable-atomic`](https://crates.io/crates/portable-atomic)) under the hood and expose the same API patterns as the standard `std::sync::atomic` types (`load`, `store`, `swap`, `compare_exchange`, `compare_exchange_weak`, `fetch_update`).
+`atomic-time` provides thread-safe atomic versions of Rust's standard time types. They are lock-free on platforms with native `AtomicU128` support; otherwise, [`portable-atomic`](https://crates.io/crates/portable-atomic) may fall back to a global lock. All types use `AtomicU128` (via `portable-atomic`) under the hood and expose the same API patterns as the standard `std::sync::atomic` types (`load`, `store`, `swap`, `compare_exchange`, `compare_exchange_weak`, `fetch_update`).
 
 ### Types
 
@@ -38,7 +38,7 @@ English | [简体中文][zh-cn-url]
 
 ```toml
 [dependencies]
-atomic-time = "0.2"
+atomic-time = "1"
 ```
 
 ### Feature Flags
@@ -46,14 +46,24 @@ atomic-time = "0.2"
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `std` | Yes | Enables `SystemTime` and `Instant` types |
-| `serde` | No | Enables `Serialize`/`Deserialize` for all types |
+| `serde` | No | Enables `Serialize`/`Deserialize` for all types, including `no_std` builds |
 
 For `no_std` environments (only `AtomicDuration` and `AtomicOptionDuration` are available):
 
 ```toml
 [dependencies]
-atomic-time = { version = "0.2", default-features = false }
+atomic-time = { version = "1", default-features = false }
 ```
+
+The optional `serde` feature can also be enabled in a `no_std` build with `features = ["serde"]`.
+
+On some bare-metal targets without native compare-and-swap support, the final application must use Cargo feature unification to enable `portable-atomic`'s `critical-section` feature and provide a target-appropriate `critical-section` implementation, or adopt another safe configuration from the official [`portable-atomic` guide](https://github.com/taiki-e/portable-atomic#optional-features).
+
+### Time Semantics
+
+`AtomicSystemTime` and `AtomicOptionSystemTime` accept only values at or after `SystemTime::UNIX_EPOCH`; earlier values panic.
+
+`AtomicInstant` and `AtomicOptionInstant` encode `Instant` relative to a process-local baseline initialized from `SystemTime::now()` and `Instant::now()`. Within the same process, values within the platform's representable `Instant` range round-trip precisely. Across processes or restarts, the encoding is not portable and decoding only approximates wall-clock time. System clock adjustments can change that cross-process or restart interpretation. Behavior across sleep follows the platform's `Instant` semantics. Encoded instants must not be persisted as deadlines. If an extreme `Duration` cannot be represented by the platform's `Instant`, decoding falls back to the process baseline instead of panicking.
 
 ## Example
 

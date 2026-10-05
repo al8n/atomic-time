@@ -337,6 +337,42 @@ jobs:
         run: valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all ./target/debug/atomic_option_instant
         working-directory: integration
 
+  no-std:
+    name: no-std
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Install target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: Check no-std
+        run: |
+          cargo check --target thumbv7em-none-eabihf --no-default-features
+          cargo check --target thumbv7em-none-eabihf --no-default-features --features serde
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup toolchain install 1.70.0 --profile minimal
+      - name: Check MSRV
+        run: |
+          cargo +1.70.0 check --lib --all-features
+          cargo +1.70.0 check --lib --no-default-features --features serde
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        run: rustup update stable && rustup default stable
+      - name: Build documentation
+        run: RUSTDOCFLAGS="-Dwarnings" cargo doc --all-features --no-deps
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest
@@ -349,6 +385,9 @@ jobs:
       - sanitizer
       - miri-tb
       - miri-sb
+      - no-std
+      - msrv
+      - docs
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust

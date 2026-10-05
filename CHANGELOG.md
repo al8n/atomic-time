@@ -1,3 +1,21 @@
+# 1.0.0 (Unreleased)
+
+STABILITY
+
+- Stabilized the public API and wire format; values encoded by 0.2.1 remain
+  compatible.
+
+FIXES
+
+- Fixed `serde` support for `no_std` builds.
+
+DOCUMENTATION AND TOOLING
+
+- Clarified that operations are lock-free only on platforms with native
+  `AtomicU128` support; `portable-atomic` may use global locks otherwise.
+- Documented the `SystemTime` and `Instant` contracts, and improved CI, MSRV,
+  and documentation coverage.
+
 # 0.2.1
 
 BUG FIXES
@@ -15,7 +33,7 @@ BUG FIXES
   serde `Deserialize` impls for `AtomicInstant` and
   `AtomicOptionInstant`, where a malformed JSON payload would crash
   the process. The function now uses `Instant::checked_add` /
-  `checked_sub` and saturates at `instant_now` on overflow.
+  `checked_sub` and falls back to the process baseline instant on overflow.
 - **Thread-safety tests now use CAS (`fetch_update`) instead of
   non-atomic load+store**, and assert exact final values. The previous
   tests could silently lose concurrent updates and still pass because

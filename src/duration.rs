@@ -100,7 +100,7 @@ impl AtomicDuration {
   ///
   /// The return value is a result indicating whether the new value was
   /// written and containing the previous value. On success this value is
-  /// guaranteed to be equal to `new`.
+  /// guaranteed to be equal to `current`.
   ///
   /// [`compare_exchange`] takes two [`Ordering`] arguments to describe the memory
   /// ordering of this operation. The first describes the required ordering if
@@ -143,7 +143,7 @@ impl AtomicDuration {
   ///
   /// Using [`Acquire`](Ordering::Acquire) as success ordering makes the store part
   /// of this operation [`Relaxed`](Ordering::Relaxed), and using [`Release`](Ordering::Release) makes the final successful load
-  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Release)
+  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Relaxed)
   /// and must be equivalent to or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
@@ -457,22 +457,10 @@ mod tests {
   #[cfg(feature = "serde")]
   #[test]
   fn test_atomic_duration_serde() {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize)]
-    struct Test {
-      duration: AtomicDuration,
-    }
-
-    let test = Test {
-      duration: AtomicDuration::new(Duration::from_secs(5)),
-    };
-    let serialized = serde_json::to_string(&test).unwrap();
-    let deserialized: Test = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(
-      deserialized.duration.load(Ordering::SeqCst),
-      Duration::from_secs(5)
-    );
+    let atomic = AtomicDuration::new(Duration::from_secs(5));
+    let serialized = serde_json::to_string(&atomic).unwrap();
+    let deserialized: AtomicDuration = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized.load(Ordering::SeqCst), Duration::from_secs(5));
   }
 
   #[test]

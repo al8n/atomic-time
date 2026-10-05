@@ -4,6 +4,8 @@ use std::time::SystemTime;
 use crate::AtomicOptionDuration;
 
 /// An atomic version of [`Option<std::time::SystemTime>`].
+///
+/// `Some` values must be at or after [`SystemTime::UNIX_EPOCH`].
 #[repr(transparent)]
 pub struct AtomicOptionSystemTime(AtomicOptionDuration);
 
@@ -32,7 +34,7 @@ impl From<Option<SystemTime>> for AtomicOptionSystemTime {
 }
 
 impl AtomicOptionSystemTime {
-  /// Equivalent to atomic version `Option::<SystemTime>>::None`.
+  /// Equivalent to atomic version `Option::<SystemTime>::None`.
   ///
   /// # Examples
   ///
@@ -172,7 +174,7 @@ impl AtomicOptionSystemTime {
   ///
   /// Using [`Acquire`](Ordering::Acquire) as success ordering makes the store part
   /// of this operation [`Relaxed`](Ordering::Relaxed), and using [`Release`](Ordering::Release) makes the final successful load
-  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Release)
+  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Relaxed)
   /// and must be equivalent to or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
@@ -462,20 +464,11 @@ mod tests {
 
   #[cfg(feature = "serde")]
   #[test]
-  fn test_atomic_system_time_serde() {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize)]
-    struct Test {
-      time: AtomicOptionSystemTime,
-    }
-
+  fn test_atomic_option_system_time_serde() {
     let now = SystemTime::now();
-    let test = Test {
-      time: AtomicOptionSystemTime::new(Some(now)),
-    };
-    let serialized = serde_json::to_string(&test).unwrap();
-    let deserialized: Test = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized.time.load(Ordering::SeqCst), Some(now));
+    let atomic = AtomicOptionSystemTime::new(Some(now));
+    let serialized = serde_json::to_string(&atomic).unwrap();
+    let deserialized: AtomicOptionSystemTime = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized.load(Ordering::SeqCst), Some(now));
   }
 }

@@ -3,6 +3,19 @@ use std::time::Instant;
 use super::*;
 
 /// Atomic version of [`Instant`].
+///
+/// Values are encoded relative to a process-local baseline pairing
+/// `std::time::SystemTime::now()` with `std::time::Instant::now()` (see
+/// [`crate::utils::encode_instant_to_duration`] and
+/// [`crate::utils::decode_instant_from_duration`]). Within the same process,
+/// values in the platform's representable `Instant` range round-trip exactly.
+/// Encodings are not portable across processes or restarts: there they only
+/// approximate wall-clock time and must not be used as persistent deadlines.
+/// System clock adjustments can affect that cross-process interpretation, while
+/// behavior across system sleep follows the platform's `Instant` semantics.
+///
+/// With the `serde` feature, this type retains its `Duration` proxy wire
+/// format. For persistent wall-clock values, use [`crate::AtomicSystemTime`].
 #[repr(transparent)]
 pub struct AtomicInstant(AtomicDuration);
 
@@ -114,7 +127,7 @@ impl AtomicInstant {
   ///
   /// Using [`Acquire`](Ordering::Acquire) as success ordering makes the store part
   /// of this operation [`Relaxed`](Ordering::Relaxed), and using [`Release`](Ordering::Release) makes the final successful load
-  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Release)
+  /// [`Relaxed`](Ordering::Relaxed). The (failed) load ordering can only be [`SeqCst`](Ordering::SeqCst), [`Acquire`](Ordering::Acquire) or [`Relaxed`](Ordering::Relaxed)
   /// and must be equivalent to or weaker than the success ordering.
   ///
   /// [`compare_exchange`]: #method.compare_exchange
@@ -370,21 +383,29 @@ mod tests {
 
   #[cfg(feature = "serde")]
   #[test]
-  fn test_atomic_instant_serde() {
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Serialize, Deserialize)]
-    struct Test {
-      time: AtomicInstant,
-    }
-
+  fn test_atomic_instant_serde_round_trip_past_and_future() {
     let now = Instant::now();
-    let test = Test {
-      time: AtomicInstant::new(now),
-    };
-    let serialized = serde_json::to_string(&test).unwrap();
-    let deserialized: Test = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized.time.load(Ordering::SeqCst), now);
+    for instant in [
+      now.checked_sub(Duration::from_secs(1)).unwrap(),
+      now.checked_add(Duration::from_secs(1)).unwrap(),
+    ] {
+      let atomic = AtomicInstant::new(instant);
+      let serialized = serde_json::to_string(&atomic).unwrap();
+      let deserialized: AtomicInstant = serde_json::from_str(&serialized).unwrap();
+      assert_eq!(deserialized.load(Ordering::SeqCst), instant);
+    }
+  }
+
+  #[cfg(feature = "serde")]
+  #[test]
+  fn test_atomic_instant_serde_matches_duration_wire_model() {
+    let instant = Instant::now();
+    let atomic = AtomicInstant::new(instant);
+    let wire_model = crate::utils::encode_instant_to_duration(instant);
+    assert_eq!(
+      serde_json::to_string(&atomic).unwrap(),
+      serde_json::to_string(&wire_model).unwrap()
+    );
   }
 
   #[test]
@@ -404,32 +425,29 @@ mod tests {
   }
 
   #[test]
-  fn decode_instant_from_extreme_duration_does_not_panic() {
-    // Regression: `decode_instant_from_duration(Duration::MAX)` used to
-    // panic via `instant_now + huge_delta`. After the fix it saturates
-    // at `instant_now` (the closest representable Instant). The exact
-    // value is less important than the fact that no panic occurs — this
-    // path is hit by serde Deserialize, so a panic would crash the
-    // process on malformed/adversarial input.
+  fn decode_extreme_instant_falls_back_to_baseline() {
+    // Inputs outside the platform Instant range use the process baseline as a
+    // fallback rather than saturating an Instant value.
     let max_dur = Duration::new(u64::MAX, 999_999_999);
     let decoded = crate::utils::decode_instant_from_duration(max_dur);
-    // Should be some valid Instant — we can't predict the exact value
-    // since it depends on when the process started, but it must not
-    // have panicked.
-    let _ = decoded;
+    let other_extreme = Duration::new(u64::MAX, 999_999_998);
+    assert_eq!(
+      decoded,
+      crate::utils::decode_instant_from_duration(other_extreme)
+    );
   }
 
   #[cfg(feature = "serde")]
   #[test]
-  fn deserialize_extreme_instant_does_not_panic() {
-    // Simulates adversarial input via serde. The Duration inside the
-    // JSON is so large that decoding it into an Instant would overflow
-    // — this must return an Ok (with a saturated value), not crash.
+  fn deserialize_extreme_instant_uses_baseline_fallback() {
+    // Preserve the existing Ok deserialization behavior for an extreme wire
+    // value; its decoded Instant falls back to the process baseline.
     let json = r#"{"secs":18446744073709551615,"nanos":999999999}"#;
     let result: Result<AtomicInstant, _> = serde_json::from_str(json);
-    assert!(
-      result.is_ok(),
-      "deserialization of extreme Instant should not panic"
+    let atomic = result.expect("extreme Instant deserialization remains Ok");
+    assert_eq!(
+      atomic.load(Ordering::SeqCst),
+      crate::utils::decode_instant_from_duration(Duration::new(u64::MAX, 999_999_999))
     );
   }
 }

@@ -1,12 +1,12 @@
 
 [package]
 name = "atomic-time"
-version = "0.2.1"
+version = "1.0.0"
 edition = "2021"
 repository = "https://github.com/al8n/atomic-time"
 homepage = "https://github.com/al8n/atomic-time"
 documentation = "https://docs.rs/atomic-time"
-description = "Lock-free, thread-safe atomic versions of Duration, SystemTime, Instant and their Option variants"
+description = "Thread-safe atomic time types, lock-free where supported"
 license = "MIT OR Apache-2.0"
 rust-version = "1.70.0"
 keywords = [
@@ -21,15 +21,16 @@ categories = [
   "concurrency",
   "no-std"
 ]
-exclude = ["benchmark"]
+exclude = ["benchmark", ".DS_Store", "output"]
 
 [features]
 default = ["std"]
-std = ["portable-atomic/std"]
+std = ["portable-atomic/std", "serde?/std"]
+serde = ["dep:serde"]
 
 [dependencies]
 portable-atomic = "1"
-serde = { version = "1", optional = true, features = ["derive"] }
+serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
 serde_json = "1"

@@ -1,8 +1,17 @@
-//! Atomic time types
+//! Atomic time types.
+//!
+//! All types are thread-safe and use `portable_atomic::AtomicU128` under the
+//! hood. Operations are lock-free on platforms with native `AtomicU128`
+//! support; otherwise, `portable-atomic` may fall back to a global lock. Each
+//! type exposes an `is_lock_free` method to query the behavior of the current
+//! target.
+//!
+//! The `std` feature controls the `SystemTime` and `Instant` types. Disable it
+//! for `no_std` builds to use the duration types without the standard library.
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(docsrs, allow(unused_attributes))]
-#![deny(missing_docs, warnings)]
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 pub use core::sync::atomic::Ordering;
@@ -14,7 +23,7 @@ pub use duration::AtomicDuration;
 mod option_duration;
 pub use option_duration::AtomicOptionDuration;
 
-/// Utility functions for encoding/decoding [`Duration`] to other types.
+/// Utility functions for encoding and decoding [`core::time::Duration`] values.
 pub mod utils {
   #[cfg(feature = "std")]
   use std::time::{Duration, Instant, SystemTime};
@@ -32,7 +41,21 @@ pub mod utils {
     })
   }
 
-  /// Encode an [`Instant`] into a [`Duration`].
+  /// Encodes an [`Instant`] into a [`Duration`] using a process-local baseline.
+  ///
+  /// The mapping is exact for instants in the same process that are representable
+  /// relative to that baseline. The baseline pairs a wall-clock duration with a
+  /// monotonic instant once; wall-clock adjustments made afterwards do not change
+  /// the mapping. Whether time advances while the machine sleeps inherits the
+  /// platform behavior of [`Instant`].
+  ///
+  /// This encoding is not a durable deadline format. Values decoded in another
+  /// process or after a restart are only wall-clock approximations.
+  ///
+  /// # Panics
+  ///
+  /// Panics if `instant` cannot be represented as a duration relative to the
+  /// process-local baseline.
   #[cfg(feature = "std")]
   #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -45,14 +68,14 @@ pub mod utils {
     }
   }
 
-  /// Decode an [`Instant`] from a [`Duration`].
+  /// Decodes an [`Instant`] from a [`Duration`] using the process-local baseline.
   ///
-  /// Accepts non-canonical input without panicking. If the encoded
-  /// Duration is so large that `instant_now + delta` would overflow
-  /// `Instant`'s internal representation, the result saturates at
-  /// `instant_now` rather than panicking. This is important because
-  /// the function sits on the serde deserialization path — a malformed
-  /// or adversarial encoded value must not crash the process.
+  /// The mapping is exact for values encoded by this process within the platform's
+  /// representable `Instant` range. Values outside that range fall back to the
+  /// baseline instant; this is a fallback, not saturation. The behavior during
+  /// system sleep inherits the platform behavior of [`Instant`]. Encodings from
+  /// another process or a previous run are only wall-clock approximations and are
+  /// not durable deadlines.
   #[cfg(feature = "std")]
   #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
   #[cfg_attr(not(tarpaulin), inline(always))]
@@ -60,12 +83,6 @@ pub mod utils {
     let (epoch_dur, instant_now) = init();
     if duration >= epoch_dur {
       let delta = duration - epoch_dur;
-      // `Instant::checked_add` returns `None` when the result
-      // would overflow the platform's monotonic-clock range.
-      // Fall back to `instant_now` — the decoded Instant is
-      // "wrong" for such extreme inputs, but the alternative
-      // (panicking) propagates into serde `Deserialize` impls
-      // and crashes the caller.
       instant_now.checked_add(delta).unwrap_or(instant_now)
     } else {
       let delta = epoch_dur - duration;
