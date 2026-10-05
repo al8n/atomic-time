@@ -4,11 +4,6 @@ use ::arbitrary::{Arbitrary, Result, Unstructured};
 
 use crate::{AtomicDuration, AtomicOptionDuration};
 
-#[cfg(feature = "std")]
-use crate::{AtomicOptionSystemTime, AtomicSystemTime};
-#[cfg(feature = "std")]
-use std::time::SystemTime;
-
 impl<'a> Arbitrary<'a> for AtomicDuration {
   fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
     <Duration as Arbitrary>::arbitrary(u).map(Self::new)
@@ -30,45 +25,54 @@ impl<'a> Arbitrary<'a> for AtomicOptionDuration {
 }
 
 #[cfg(feature = "std")]
-fn system_time_from_parts((seconds, nanoseconds): (u32, u32)) -> SystemTime {
-  let duration = Duration::new(
-    u64::from(seconds.min(i32::MAX as u32)),
-    nanoseconds % 1_000_000_000,
-  );
-  SystemTime::UNIX_EPOCH
-    .checked_add(duration)
-    .unwrap_or(SystemTime::UNIX_EPOCH)
-}
+const _: () = {
+  use crate::{AtomicOptionSystemTime, AtomicSystemTime};
+  use std::time::SystemTime;
 
-#[cfg(feature = "std")]
-impl<'a> Arbitrary<'a> for AtomicSystemTime {
-  fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-    <(u32, u32) as Arbitrary>::arbitrary(u)
-      .map(system_time_from_parts)
-      .map(Self::new)
+  fn system_time_from_parts((seconds, nanoseconds): (u32, u32)) -> SystemTime {
+    let duration = Duration::new(
+      u64::from(seconds.min(i32::MAX as u32)),
+      nanoseconds % 1_000_000_000,
+    );
+    SystemTime::UNIX_EPOCH
+      .checked_add(duration)
+      .unwrap_or(SystemTime::UNIX_EPOCH)
   }
 
-  fn size_hint(depth: usize) -> (usize, Option<usize>) {
-    <(u32, u32) as Arbitrary>::size_hint(depth)
-  }
-}
+  impl<'a> Arbitrary<'a> for AtomicSystemTime {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
+      <(u32, u32) as Arbitrary>::arbitrary(u)
+        .map(system_time_from_parts)
+        .map(Self::new)
+    }
 
-#[cfg(feature = "std")]
-impl<'a> Arbitrary<'a> for AtomicOptionSystemTime {
-  fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
-    <Option<(u32, u32)> as Arbitrary>::arbitrary(u)
-      .map(|parts| Self::new(parts.map(system_time_from_parts)))
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+      <(u32, u32) as Arbitrary>::size_hint(depth)
+    }
   }
 
-  fn size_hint(depth: usize) -> (usize, Option<usize>) {
-    <Option<(u32, u32)> as Arbitrary>::size_hint(depth)
+  impl<'a> Arbitrary<'a> for AtomicOptionSystemTime {
+    fn arbitrary(u: &mut Unstructured<'a>) -> Result<Self> {
+      <Option<(u32, u32)> as Arbitrary>::arbitrary(u)
+        .map(|parts| Self::new(parts.map(system_time_from_parts)))
+    }
+
+    fn size_hint(depth: usize) -> (usize, Option<usize>) {
+      <Option<(u32, u32)> as Arbitrary>::size_hint(depth)
+    }
   }
-}
+};
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use core::sync::atomic::Ordering;
+
+  #[cfg(feature = "std")]
+  use {
+    crate::{AtomicOptionSystemTime, AtomicSystemTime},
+    std::time::SystemTime,
+  };
 
   #[test]
   fn duration_types_are_deterministic_and_delegate_size_hints() {
