@@ -170,6 +170,14 @@ assert!(last_event.load(Ordering::Acquire).is_some());
 
 最低支持的 Rust 版本为 **1.85**。
 
+此 crate 作为 workspace 根构建时使用 Cargo resolver 3。下游 workspace 自行控制
+resolver。使用 Rust Edition 2024 的根 package 默认使用 resolver 3。对于 Edition
+2021 的根 package，在 `[package]` 中设置 `resolver = "3"`。对于虚拟 workspace，
+在 `[workspace]` 中设置。使用 Rust 1.85 时，可在 workspace 根启用 resolver 3 以
+选择兼容的依赖。如果现有锁文件选中了 `proptest` 1.12，且依赖
+版本要求允许，可运行 `cargo update -p proptest --precise 1.11.0`。`proptest` 1.12
+需要 Rust 1.88。
+
 ## 许可证
 
 `atomic-time` 使用 MIT 许可证和 Apache 许可证（2.0 版本）双重授权。

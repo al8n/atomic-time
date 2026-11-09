@@ -1,3 +1,10 @@
+# Unreleased
+
+FIXES
+
+- Use Cargo resolver 3 for MSRV-compatible dependency resolution after new
+  `proptest` releases, retaining Rust 1.85 support in this workspace.
+
 # 1.0.0 (2026-10-07)
 
 STABILITY
