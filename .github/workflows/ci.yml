@@ -133,6 +133,8 @@ jobs:
   
   test:
     name: test
+    env:
+      CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: allow
     strategy:
       matrix:
         os:
@@ -354,6 +356,8 @@ jobs:
   msrv:
     name: msrv
     runs-on: ubuntu-latest
+    env:
+      CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
     steps:
       - uses: actions/checkout@v7
       - name: Install Rust

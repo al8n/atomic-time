@@ -176,6 +176,15 @@ Run with `cargo bench` in the `benchmark/` directory. Apple M4 Pro.
 
 The minimum supported Rust version is **1.85**.
 
+This crate uses Cargo resolver 3 when built as the workspace root. A downstream
+workspace controls its own resolver. A root package using Rust Edition 2024
+defaults to resolver 3. For an Edition 2021 root package, set `resolver = "3"`
+in `[package]`. For a virtual workspace, set it in `[workspace]`.
+On Rust 1.85, use resolver 3 in your workspace root to select compatible
+dependencies. If an existing lockfile selects `proptest` 1.12, and your
+dependency requirements allow it, run
+`cargo update -p proptest --precise 1.11.0`. `proptest` 1.12 requires Rust 1.88.
+
 ## License
 
 `atomic-time` is under the terms of both the MIT license and the

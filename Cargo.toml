@@ -3,6 +3,7 @@
 name = "atomic-time"
 version = "1.0.0"
 edition = "2021"
+resolver = "3"
 repository = "https://github.com/al8n/atomic-time"
 homepage = "https://github.com/al8n/atomic-time"
 documentation = "https://docs.rs/atomic-time"
